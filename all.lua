@@ -322,13 +322,8 @@ end
 
 local particle_proxy_m = {}
 
-local FIELD_DCOLOUR = sim.FIELD_DCOLOUR
 function particle_proxy_m:__index(property_key)
-    local value = sim.partProperty(self.id, property_key)
-    if value < 0 and (property_key == "dcolour" or property_key == FIELD_DCOLOUR) then
-        value = value + 0x100000000
-    end
-    return value
+    return sim.partProperty(self.id, property_key)
 end
 
 function particle_proxy_m:__newindex(property_key, property_value)
