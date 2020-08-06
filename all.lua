@@ -124,7 +124,7 @@ You can of course store sets in variables for later use:
     stuff:each(function(p)
         p.dcolour = (p.x + p.y) % 3 == 0 and 0xFFFFFFFF or 0xFF000000
     end)
-    stuff:randomise("type", {"qrtz", "glas", "tung"})
+    stuff:randomise("type", { "qrtz", "glas", "tung" })
 
 And since most of these functions return the set they're called on (one
 exception being :count), you can chain them:
@@ -270,438 +270,468 @@ That's about it. Hope you enjoy.
 
 local element_name_cache = {}
 local function rebuild_element_name_cache()
-    element_name_cache = {}
-    for long_name, element_id in pairs(elem) do
-        if type(long_name) == "string" and long_name:find("_PT_") then
-            local ok, display_name = pcall(elem.property, element_id, "Name")
-            if ok then
-                element_name_cache[display_name:upper()] = element_id
-            end
-        end
-    end
+	element_name_cache = {}
+	for long_name, element_id in pairs(elem) do
+		if type(long_name) == "string" and long_name:find("_PT_") then
+			local ok, display_name = pcall(elem.property, element_id, "Name")
+			if ok then
+				element_name_cache[display_name:upper()] = element_id
+			end
+		end
+	end
 end
 
 local function prop_value(property_value)
-    while type(property_value) == "string" do
-        do -- * It may be a temperature value. Chicken wings, anyone?
-            local num, kfc = property_value:upper():match("^(.+)([KFC])$")
-            if num then
-                num = tonumber(num)
-            end
-            if num then
-                if kfc == "F" then
-                    num = (num - 32) / 1.8
-                    kfc = "C"
-                end
-                if kfc == "C" then
-                    num = num + 273.15
-                end
-                property_value = num
-                break
-            end
-        end
+	while type(property_value) == "string" do
+		do -- * It may be a temperature value. Chicken wings, anyone?
+			local num, kfc = property_value:upper():match("^(.+)([KFC])$")
+			if num then
+				num = tonumber(num)
+			end
+			if num then
+				if kfc == "F" then
+					num = (num - 32) / 1.8
+					kfc = "C"
+				end
+				if kfc == "C" then
+					num = num + 273.15
+				end
+				property_value = num
+				break
+			end
+		end
 
-        do -- * It may be an element name.
-            local upper = property_value:upper()
-            local elementID = element_name_cache[upper]
-            local ok, display_name = pcall(elem.property, elementID, "Name")
-            if not ok or display_name:upper() ~= upper then
-                rebuild_element_name_cache()
-                elementID = element_name_cache[upper]
-            end
-            if elementID then
-                property_value = elementID
-                break
-            end
-        end
+		do -- * It may be an element name.
+			local upper = property_value:upper()
+			local elementID = element_name_cache[upper]
+			local ok, display_name = pcall(elem.property, elementID, "Name")
+			if not ok or display_name:upper() ~= upper then
+				rebuild_element_name_cache()
+				elementID = element_name_cache[upper]
+			end
+			if elementID then
+				property_value = elementID
+				break
+			end
+		end
 
-        break -- * It seems to be none of the above, let TPT handle it.
-    end
-    return property_value
+		break -- * It seems to be none of the above, let TPT handle it.
+	end
+	return property_value
 end
 
 local particle_proxy_m = {}
 
 function particle_proxy_m:__index(property_key)
-    return sim.partProperty(self.id, property_key)
+	return sim.partProperty(self.id, property_key)
 end
 
 function particle_proxy_m:__newindex(property_key, property_value)
-    return sim.partProperty(self.id, property_key, prop_value(property_value))
+	return sim.partProperty(self.id, property_key, prop_value(property_value))
 end
 
-local weak_proxy_store = setmetatable({}, {__mode = "v"})
+local weak_proxy_store = setmetatable({}, { __mode = "v" })
 local function make_particle_proxy(id)
-    local grab_proxy = weak_proxy_store[id]
-    if grab_proxy then
-        return grab_proxy
-    end
-    local new_proxy = setmetatable({
-        id = id
-    }, particle_proxy_m)
-    weak_proxy_store[id] = new_proxy
-    return new_proxy
+	local grab_proxy = weak_proxy_store[id]
+	if grab_proxy then
+		return grab_proxy
+	end
+	local new_proxy = setmetatable({ id = id }, particle_proxy_m)
+	weak_proxy_store[id] = new_proxy
+	return new_proxy
 end
 
 local make_particle_set
 
 local particle_set_i = {}
-local particle_set_m = {__index = particle_set_i}
+local particle_set_m = { __index = function(self, key)
+	if type(key) == "number" then
+		return self:nth(key)
+	else
+		return particle_set_i[key]
+	end
+end }
 
 function particle_set_m:__add(other)
-    local result = make_particle_set()
-    for id in self:iterate() do
-        result:insert(id)
-    end
-    for id in other:iterate() do
-        result:insert(id)
-    end
-    return result
+	local result = make_particle_set()
+	for id in self:iterate() do
+		result:insert(id)
+	end
+	for id in other:iterate() do
+		result:insert(id)
+	end
+	return result
 end
 
 function particle_set_m:__sub(other)
-    local result = make_particle_set()
-    for id in self:iterate() do
-        result:insert(id)
-    end
-    for id in other:iterate() do
-        result:remove(id)
-    end
-    return result
+	local result = make_particle_set()
+	for id in self:iterate() do
+		result:insert(id)
+	end
+	for id in other:iterate() do
+		result:remove(id)
+	end
+	return result
 end
 
 function particle_set_m:__mul(other)
-    local result = make_particle_set()
-    for id in self:iterate() do
-        result:insert(id)
-    end
-    for id in (tpt.all() - other):iterate() do
-        result:remove(id)
-    end
-    return result
+	local result = make_particle_set()
+	for id in self:iterate() do
+		result:insert(id)
+	end
+	for id in (tpt.all() - other):iterate() do
+		result:remove(id)
+	end
+	return result
 end
 
 function particle_set_m:__eq(other)
-    if self:count() ~= other:count() then
-        return false
-    end
-    for id in self:iterate() do
-        if not other:has(id) then
-            return false
-        end
-    end
-    return true
+	if self:count() ~= other:count() then
+		return false
+	end
+	for id in self:iterate() do
+		if not other:has(id) then
+			return false
+		end
+	end
+	return true
 end
 
 function particle_set_m:__lt(other)
-    for id in self:iterate() do
-        if not other:has(id) then
-            return false
-        end
-    end
-    for id in other:iterate() do
-        if not self:has(id) then
-            return true
-        end
-    end
-    return false
+	for id in self:iterate() do
+		if not other:has(id) then
+			return false
+		end
+	end
+	for id in other:iterate() do
+		if not self:has(id) then
+			return true
+		end
+	end
+	return false
 end
 
 function particle_set_m:__le(other)
-    for id in self:iterate() do
-        if not other:has(id) then
-            return false
-        end
-    end
-    for id in other:iterate() do
-        if not self:has(id) then
-            return true
-        end
-    end
-    return true
+	for id in self:iterate() do
+		if not other:has(id) then
+			return false
+		end
+	end
+	for id in other:iterate() do
+		if not self:has(id) then
+			return true
+		end
+	end
+	return true
 end
 
 function particle_set_m:__tostring()
-    return tostring(self:count())
+	return tostring(self:count())
 end
 
 function particle_set_i:next(current_id)
-    local next_id, next_proxy = next(self.particle_assoc, current_id)
-    if not next_id then
-        return
-    end
-    return next_id, next_proxy
+	local next_id, next_proxy = next(self.particle_assoc, current_id)
+	if not next_id then
+		return
+	end
+	return next_id, next_proxy
 end
 
 function particle_set_i:iterate()
-    return self.next, self
+	return self.next, self
 end
 
 function particle_set_i:bbox(x1, y1, x2, y2)
-    return self:gte("x", x1):gte("y", y1):lt("x", x2):lt("y", y2)
+	return self:gte("x", x1 - 0.5):gte("y", y1 - 0.5):lt("x", x2 - 0.5):lt("y", y2 - 0.5)
 end
 
 function particle_set_i:cursor(width, height)
-    local x, y = sim.adjustCoords(tpt.mousex, tpt.mousey)
-    return self:bbox(x, y, x + width, y + height)
+	local x, y = sim.adjustCoords(tpt.mousex, tpt.mousey)
+	return self:bbox(x, y, x + width, y + height)
 end
 
 function particle_set_i:filter(func, ...)
-    local result = make_particle_set()
-    for id, proxy in self:iterate() do
-        if func(proxy, ...) then
-            result:insert(id)
-        end
-    end
-    return result
+	local result = make_particle_set()
+	for id, proxy in self:iterate() do
+		if func(proxy, ...) then
+			result:insert(id)
+		end
+	end
+	return result
 end
 
 function particle_set_i:clone()
-    return self:filter(function()
-        return true
-    end)
+	return self:filter(function()
+		return true
+	end)
 end
 
 function particle_set_i:eq(property_key, property_value)
-    property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] == property_value
-    end)
+	property_value = prop_value(property_value)
+	return self:filter(function(proxy)
+		return proxy[property_key] == property_value
+	end)
 end
 
 function particle_set_i:neq(property_key, property_value)
-    property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] ~= property_value
-    end)
+	property_value = prop_value(property_value)
+	return self:filter(function(proxy)
+		return proxy[property_key] ~= property_value
+	end)
 end
 
 function particle_set_i:gt(property_key, property_value)
-    property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] > property_value
-    end)
+	property_value = prop_value(property_value)
+	return self:filter(function(proxy)
+		return proxy[property_key] > property_value
+	end)
 end
 
 function particle_set_i:gte(property_key, property_value)
-    property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] >= property_value
-    end)
+	property_value = prop_value(property_value)
+	return self:filter(function(proxy)
+		return proxy[property_key] >= property_value
+	end)
 end
 
 function particle_set_i:lt(property_key, property_value)
-    property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] < property_value
-    end)
+	property_value = prop_value(property_value)
+	return self:filter(function(proxy)
+		return proxy[property_key] < property_value
+	end)
 end
 
 function particle_set_i:lte(property_key, property_value)
-    property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] <= property_value
-    end)
+	property_value = prop_value(property_value)
+	return self:filter(function(proxy)
+		return proxy[property_key] <= property_value
+	end)
 end
 
 function particle_set_i:each(func, ...)
-    for id, proxy in self:iterate() do
-        func(proxy, ...)
-    end
-    return self
+	for id, proxy in self:iterate() do
+		func(proxy, ...)
+	end
+	return self
 end
 
 function particle_set_i:top()
-    local new_ids = {}
-    for id in self:iterate() do
-        table.insert(new_ids, sim.partID(sim.partPosition(id)))
-    end
-    return tpt.all(new_ids)
+	local new_ids = {}
+	for id in self:iterate() do
+		table.insert(new_ids, sim.partID(sim.partPosition(id)))
+	end
+	return tpt.all(new_ids)
+end
+
+function particle_set_i:range(first, last)
+	local count = self:count()
+	first = first or 1
+	last = last or count
+	if first < 0 then
+		first = count + first + 1
+	end
+	if last < 0 then
+		last = count + last + 1
+	end
+	local ordered = {}
+	for id in self:iterate() do
+		table.insert(ordered, id)
+	end
+	table.sort(ordered)
+	local new_ids = {}
+	for ix = first, last do
+		table.insert(new_ids, ordered[ix])
+	end
+	return tpt.all(new_ids)
+end
+
+function particle_set_i:nth(first)
+	return self:range(first, first)
 end
 
 function particle_set_i:set(property_key, property_value)
-    property_value = prop_value(property_value)
-    for id, proxy in self:iterate() do
-        if type(property_value) == "function" then
-            proxy[property_key] = property_value(proxy)
-        else
-            proxy[property_key] = property_value
-        end
-    end
-    return self
+	property_value = prop_value(property_value)
+	for id, proxy in self:iterate() do
+		if type(property_value) == "function" then
+			proxy[property_key] = property_value(proxy)
+		else
+			proxy[property_key] = property_value
+		end
+	end
+	return self
 end
 
 function particle_set_i:add(property_key, property_value)
-    property_value = prop_value(property_value)
-    for id, proxy in self:iterate() do
-        if type(property_value) == "function" then
-            proxy[property_key] = proxy[property_key] + property_value(proxy)
-        else
-            proxy[property_key] = proxy[property_key] + property_value
-        end
-    end
-    return self
+	property_value = prop_value(property_value)
+	for id, proxy in self:iterate() do
+		if type(property_value) == "function" then
+			proxy[property_key] = proxy[property_key] + property_value(proxy)
+		else
+			proxy[property_key] = proxy[property_key] + property_value
+		end
+	end
+	return self
 end
 
 function particle_set_i:randomise(property_key, property_values)
-    local pv_size = #property_values
-    for ix = 1, pv_size do
-        property_values[ix] = prop_value(property_values[ix])
-    end
-    for id, proxy in self:iterate() do
-        local property_value = property_values[math.random(1, pv_size)]
-        if type(property_value) == "function" then
-            proxy[property_key] = property_value(proxy)
-        else
-            proxy[property_key] = property_value
-        end
-    end
-    return self
+	local pv_size = #property_values
+	for ix = 1, pv_size do
+		property_values[ix] = prop_value(property_values[ix])
+	end
+	for id, proxy in self:iterate() do
+		local property_value = property_values[math.random(1, pv_size)]
+		if type(property_value) == "function" then
+			proxy[property_key] = property_value(proxy)
+		else
+			proxy[property_key] = property_value
+		end
+	end
+	return self
 end
 
 function particle_set_i:get(property_key)
-    local result
-    local multiple_values = false
-    for id, proxy in self:iterate() do
-        local value = proxy[property_key]
-        if result then
-            if result ~= value then
-                multiple_values = true
-                break
-            end
-        else
-            result = value
-        end
-    end
-    return not multiple_values and result
+	local result
+	local multiple_values = false
+	for id, proxy in self:iterate() do
+		local value = proxy[property_key]
+		if result then
+			if result ~= value then
+				multiple_values = true
+				break
+			end
+		else
+			result = value
+		end
+	end
+	return not multiple_values and result
 end
 
 function particle_set_i:average(property_key)
-    local result = 0
-    for id, proxy in self:iterate() do
-        result = result + proxy[property_key]
-    end
-    return result / self.particle_count
+	local result = 0
+	for id, proxy in self:iterate() do
+		result = result + proxy[property_key]
+	end
+	return result / self.particle_count
 end
 
 function particle_set_i:kill()
-    return self:each(function(proxy)
-        sim.partKill(proxy.id)
-    end)
+	return self:each(function(proxy)
+		sim.partKill(proxy.id)
+	end)
 end
 
 function particle_set_i:insert(id)
-    if not self.particle_assoc[id] then
-        self.particle_assoc[id] = make_particle_proxy(id)
-        self.particle_count = self.particle_count + 1
-    end
-    return self
+	if not self.particle_assoc[id] then
+		self.particle_assoc[id] = make_particle_proxy(id)
+		self.particle_count = self.particle_count + 1
+	end
+	return self
 end
 
 function particle_set_i:remove(id)
-    if self.particle_assoc[id] then
-        self.particle_assoc[id] = nil
-        self.particle_count = self.particle_count - 1
-    end
-    return self
+	if self.particle_assoc[id] then
+		self.particle_assoc[id] = nil
+		self.particle_count = self.particle_count - 1
+	end
+	return self
 end
 
 function particle_set_i:has(id)
-    return self.particle_assoc[id] and true
+	return self.particle_assoc[id] and true
 end
 
 function particle_set_i:count()
-    return self.particle_count
+	return self.particle_count
 end
 
 function make_particle_set()
-    return setmetatable({
-        particle_count = 0,
-        particle_assoc = {}
-    }, particle_set_m)
+	return setmetatable({
+		particle_count = 0,
+		particle_assoc = {},
+	}, particle_set_m)
 end
 
-tpt.all = setmetatable({}, {__call = function(self, param, param2)
-    if type(param2) == "number" and type(param) == "number" then
-        return tpt.all.at(param, param2)
-    end
-    if type(param) == "number" then
-        return tpt.all.one(param)
-    elseif type(param) == "table" then
-        return tpt.all.array(param)
-    elseif type(param) == "function" then
-        return tpt.all.buffer(param)
-    end
-    local all_particles = make_particle_set()
-    for id in sim.parts() do
-        all_particles:insert(id)
-    end
-    return all_particles
-end})
+tpt.all = setmetatable({}, { __call = function(self, param, param2)
+	if type(param2) == "number" and type(param) == "number" then
+		return tpt.all.at(param, param2)
+	end
+	if type(param) == "number" then
+		return tpt.all.one(param)
+	elseif type(param) == "table" then
+		return tpt.all.array(param)
+	elseif type(param) == "function" then
+		return tpt.all.buffer(param)
+	end
+	local all_particles = make_particle_set()
+	for id in sim.parts() do
+		all_particles:insert(id)
+	end
+	return all_particles
+end })
 
 function tpt.all.at(x, y)
-    local id = sim.partID(x, y)
-    return id and tpt.all.one(id) or nil
+	local id = sim.partID(x, y)
+	return id and tpt.all.one(id) or nil
 end
 
 function tpt.all.proxy(id)
-    return make_particle_proxy(id)
+	return make_particle_proxy(id)
 end
 
 function tpt.all.one(id)
-    local one_particle = make_particle_set()
-    one_particle:insert(id)
-    return one_particle
+	local one_particle = make_particle_set()
+	one_particle:insert(id)
+	return one_particle
 end
 
 function tpt.all.assoc(id_assoc)
-    local all_particles = make_particle_set()
-    for id in pairs(id_assoc) do
-        all_particles:insert(id)
-    end
-    return all_particles
+	local all_particles = make_particle_set()
+	for id in pairs(id_assoc) do
+		all_particles:insert(id)
+	end
+	return all_particles
 end
 
 function tpt.all.array(id_array)
-    local all_particles = make_particle_set()
-    for ix = 1, #id_array do
-        all_particles:insert(id_array[ix])
-    end
-    return all_particles
+	local all_particles = make_particle_set()
+	for ix = 1, #id_array do
+		all_particles:insert(id_array[ix])
+	end
+	return all_particles
 end
 
 function tpt.all.buffer(func, ...)
-    local all_particles
-    local sim_partCreate_original = sim.partCreate
-    local ok, err = pcall(function(...)
-        local id_buffer = {}
-        sim.partCreate = function(...)
-            local id = sim_partCreate_original(...)
-            if id then
-                id_buffer[id] = true
-            end
-            return id
-        end
-        func(...)
-        all_particles = tpt.all.assoc(id_buffer)
-    end, ...)
-    sim.partCreate = sim_partCreate_original
-    if not ok then
-        error(err)
-    end
-    return all_particles
+	local all_particles
+	local sim_partCreate_original = sim.partCreate
+	local ok, err = pcall(function(...)
+		local id_buffer = {}
+		sim.partCreate = function(...)
+			local id = sim_partCreate_original(...)
+			if id then
+				id_buffer[id] = true
+			end
+			return id
+		end
+		func(...)
+		all_particles = tpt.all.assoc(id_buffer)
+	end, ...)
+	sim.partCreate = sim_partCreate_original
+	if not ok then
+		error(err)
+	end
+	return all_particles
 end
 
 function tpt.all.fill(particle_type)
-    if particle_type then
-        particle_type = prop_value(particle_type)
-    else
-        particle_type = elem.DEFAULT_PT_DMND
-    end
-    for ix = 0, sim.XRES - 1 do
-        for iy = 0, sim.YRES - 1 do
-            sim.partCreate(-2, ix, iy, particle_type)
-        end
-    end
+	if particle_type then
+		particle_type = prop_value(particle_type)
+	else
+		particle_type = elem.DEFAULT_PT_DMND
+	end
+	for ix = 0, sim.XRES - 1 do
+		for iy = 0, sim.YRES - 1 do
+			sim.partCreate(-2, ix, iy, particle_type)
+		end
+	end
 end
 
