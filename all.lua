@@ -1,7 +1,7 @@
 --[[
 
 TPT All script
-LBPHacker, 2018-2019
+LBPHacker, 2018-2020
 
 This script lets you define sets of particles, filter these sets (comparisons,
 user filters), execute boolean operations on them (union, difference,
