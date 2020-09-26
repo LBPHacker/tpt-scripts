@@ -313,6 +313,18 @@ That's about it. Hope you enjoy.
 
 --]]
 
+local xy_properties = {}
+for _, name in pairs({ "x", "y" }) do
+    xy_properties[name] = true
+    xy_properties[sim["FIELD_" .. name:upper()]] = true
+end
+local float_properties = {}
+for _, name in pairs({ "x", "y", "vx", "vx", "temp", "pavg0", "pavg1" }) do
+    float_properties[name] = true
+    float_properties[sim["FIELD_" .. name:upper()]] = true
+end
+local default_epsilon = 1e-3
+
 local element_name_cache = {}
 local function rebuild_element_name_cache()
     element_name_cache = {}
@@ -326,8 +338,8 @@ local function rebuild_element_name_cache()
     end
 end
 
-local function prop_value(property_value)
-    while type(property_value) == "string" do
+local function prop_value_smart(property_value)
+    if type(property_value) == "string" then
         do -- * It may be a temperature value. Chicken wings, anyone?
             local num, kfc = property_value:upper():match("^(.+)([KFC])$")
             if num then
@@ -341,11 +353,9 @@ local function prop_value(property_value)
                 if kfc == "C" then
                     num = num + 273.15
                 end
-                property_value = num
-                break
+                return num
             end
         end
-
         do -- * It may be an element name.
             local upper = property_value:upper()
             local elementID = element_name_cache[upper]
@@ -355,11 +365,9 @@ local function prop_value(property_value)
                 elementID = element_name_cache[upper]
             end
             if elementID then
-                property_value = elementID
-                break
+                return elementID
             end
         end
-
         do -- * It may be a # colour code.
             local lower = property_value:lower()
             local code = lower:match("^#([a-f%d][a-f%d][a-f%d][a-f%d][a-f%d][a-f%d])$")
@@ -370,20 +378,21 @@ local function prop_value(property_value)
                 end
             end
             if code then
-                property_value = tonumber("0xFF" .. code)
-                break
+                return tonumber("0xFF" .. code)
             end
         end
-
         do -- * It may be a number in string form.
             local num = tonumber(property_value)
             if num then
-                property_value = num
-                break
+                return num
             end
         end
     end
+    return property_value
+end
 
+local function prop_value(property_value)
+    property_value = prop_value_smart(property_value)
     if type(property_value) ~= "number" then
         error("invalid property value")
     end
@@ -542,46 +551,96 @@ function particle_set_i:clone()
     end)
 end
 
-function particle_set_i:eq(property_key, property_value)
+function particle_set_i:eq(property_key, property_value, no_adjust_xy, epsilon)
     property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] == property_value
-    end)
+    if float_properties[property_key] then
+        epsilon = epsilon or default_epsilon
+        if not no_adjust_xy and xy_properties[property_key] then
+            return self:filter(function(proxy)
+                return math.abs(proxy[property_key] + 0.5 - property_value) < epsilon
+            end)
+        else
+            return self:filter(function(proxy)
+                return math.abs(proxy[property_key] - property_value) < epsilon
+            end)
+        end
+    else
+        return self:filter(function(proxy)
+            return proxy[property_key] == property_value
+        end)
+    end
 end
 
-function particle_set_i:neq(property_key, property_value)
+function particle_set_i:neq(property_key, property_value, no_adjust_xy, epsilon)
     property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] ~= property_value
-    end)
+    if float_properties[property_key] then
+        epsilon = epsilon or default_epsilon
+        if not no_adjust_xy and xy_properties[property_key] then
+            return self:filter(function(proxy)
+                return math.abs(proxy[property_key] + 0.5 - property_value) >= epsilon
+            end)
+        else
+            return self:filter(function(proxy)
+                return math.abs(proxy[property_key] - property_value) >= epsilon
+            end)
+        end
+    else
+        return self:filter(function(proxy)
+            return proxy[property_key] ~= property_value
+        end)
+    end
 end
 
-function particle_set_i:gt(property_key, property_value)
+function particle_set_i:gt(property_key, property_value, no_adjust_xy)
     property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] > property_value
-    end)
+    if not no_adjust_xy and xy_properties[property_key] then
+        return self:filter(function(proxy)
+            return proxy[property_key] + 0.5 > property_value
+        end)
+    else
+        return self:filter(function(proxy)
+            return proxy[property_key] > property_value
+        end)
+    end
 end
 
-function particle_set_i:gte(property_key, property_value)
+function particle_set_i:gte(property_key, property_value, no_adjust_xy)
     property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] >= property_value
-    end)
+    if not no_adjust_xy and xy_properties[property_key] then
+        return self:filter(function(proxy)
+            return proxy[property_key] + 0.5 >= property_value
+        end)
+    else
+        return self:filter(function(proxy)
+            return proxy[property_key] >= property_value
+        end)
+    end
 end
 
-function particle_set_i:lt(property_key, property_value)
+function particle_set_i:lt(property_key, property_value, no_adjust_xy)
     property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] < property_value
-    end)
+    if not no_adjust_xy and xy_properties[property_key] then
+        return self:filter(function(proxy)
+            return proxy[property_key] + 0.5 < property_value
+        end)
+    else
+        return self:filter(function(proxy)
+            return proxy[property_key] < property_value
+        end)
+    end
 end
 
-function particle_set_i:lte(property_key, property_value)
+function particle_set_i:lte(property_key, property_value, no_adjust_xy)
     property_value = prop_value(property_value)
-    return self:filter(function(proxy)
-        return proxy[property_key] <= property_value
-    end)
+    if not no_adjust_xy and xy_properties[property_key] then
+        return self:filter(function(proxy)
+            return proxy[property_key] + 0.5 <= property_value
+        end)
+    else
+        return self:filter(function(proxy)
+            return proxy[property_key] <= property_value
+        end)
+    end
 end
 
 function particle_set_i:each(func, ...)
@@ -775,7 +834,7 @@ function particle_set_i:easy(str)
     local result = self:clone()
     for word in str:gmatch("%S+") do
         counter = counter + 1
-        local prop, op_str, params_str = word:match("^([%a%d]*)([!=<>?/#+-^@]-)([%a%d#,]*)$")
+        local prop, op_str, params_str = word:match("^([%a%d]*)([!=<>?/#+-^@]-)([%a%d#.%-,]*)$")
         if not op_str then
             error("#" .. counter .. ": missing operator")
         end
