@@ -266,11 +266,10 @@ right. The operators are as follows:
  - name=value is short for :set(name, value),
  - name=val1,val2,... is short for :randomise(name, { val1, val2, ... }),
  - name+=value is short for :add(name, value),
- - name-=value is short for :add(name, -value),
  - name? is short for :get(name),
  - name?/ is short for :average(name),
  - ! is short for :kill(),
- - # is short for :count().
+ - $ is short for :count().
 
 You combine these operators by joining them with spaces. As an example, we're
 going to rewrite an earlier example to use :easy
@@ -813,9 +812,6 @@ local easy_operators = {
     [ "+=" ] = { takes_name = true, takes_value = 1, func = function(set, prop, params)
         return set:add(prop, params[1])
     end },
-    [ "-=" ] = { takes_name = true, takes_value = 1, func = function(set, prop, params)
-        return set:add(prop, -params[1])
-    end },
     [ "?" ] = { takes_name = true, takes_value = 0, func = function(set, prop, _)
         return set:get(prop)
     end },
@@ -825,7 +821,7 @@ local easy_operators = {
     [ "!" ] = { takes_name = false, takes_value = 0, func = function(set, _, _)
         return set:kill()
     end },
-    [ "#" ] = { takes_name = false, takes_value = 0, func = function(set, _, _)
+    [ "$" ] = { takes_name = false, takes_value = 0, func = function(set, _, _)
         return set:count()
     end },
 }
@@ -834,7 +830,7 @@ function particle_set_i:easy(str)
     local result = self:clone()
     for word in str:gmatch("%S+") do
         counter = counter + 1
-        local prop, op_str, params_str = word:match("^([%a%d]*)([!=<>?/#+-^@]-)([%a%d#.%-,]*)$")
+        local prop, op_str, params_str = word:match("^([%a%d]*)([!=<>?/$+^@]+)([%a%d#.%-,]*)$")
         if not op_str then
             error("#" .. counter .. ": missing operator")
         end
