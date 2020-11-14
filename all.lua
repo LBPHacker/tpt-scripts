@@ -75,12 +75,15 @@ that they are sets of particles. There are many ways to create such sets:
  - tpt.all.zero() returns a set which holds no particles,
  - tpt.all.one(id) returns a set which holds a single particle whose ID is id,
  - tpt.all.easy(str) is a shorthand for tpt.all():easy(str), see :easy below,
- - tpt.all.array(arr) does the same with the values of arr (a Lua array),
+ - tpt.all.array(arr) does the same with the values of arr (a Lua array; the
+   inverse of this operation is set_1:array(), which returns such a table),
  - tpt.all.buffer(func, ...) returns a set of particles created by func (a
    function which the script calls with the rest of the arguments, the ...
    thing) by secretly intercepting all sim.partCreate calls (see way
    below for examples),
- - tpt.all.assoc(tbl) returns a set of particles whose IDs are the keys of tbl.
+ - tpt.all.assoc(tbl) returns a set of particles whose IDs are the keys of tbl
+   (a Lua table; the inverse of this operation is set_1:assoc(), which returns
+   such a table).
 
 In fact you shouldn't use tpt.all.proxy at all. Sets are way better, believe me.
 
@@ -113,6 +116,8 @@ Here's a full list of property manipulation functions that sets support:
    chooses one property value from value_array for every particle (yes, you can
    even have functions in the array),
  - set_1:kill() kills all particles in the set,
+ - set_1:reorder() orders all particles in the set the way they would be ordered
+   when they are freshly loaded from a save file,
  - finally there is set_1:each(func, ...) which you can use if no other
    manipulator does what you want: it calls func for all particles in the set
    (func gets the proxy as its first parameter and the ... after that).
@@ -270,6 +275,7 @@ right. The operators are as follows:
  - name?/ is short for :average(name),
  - ! is short for :kill(),
  - $ is short for :count().
+ - * is short for :reorder().
 
 You combine these operators by joining them with spaces. As an example, we're
 going to rewrite an earlier example to use :easy
@@ -395,7 +401,7 @@ local function prop_value(property_value)
     if type(property_value) ~= "number" then
         error("invalid property value")
     end
-    return property_value -- * It seems to be none of the above, let TPT handle it.
+    return property_value
 end
 
 local function prop_value_func(property_value)
@@ -719,6 +725,52 @@ function particle_set_i:randomise(property_key, property_values)
     return self
 end
 
+local field_type = sim.FIELD_TYPE
+local field_x = sim.FIELD_X
+local field_y = sim.FIELD_Y
+local fields = {}
+for key, value in pairs(sim) do
+    if key:find("^FIELD_") then
+        fields[value] = true
+    end
+end
+function particle_set_i:reorder()
+    local props = {}
+    local ids = {}
+    for _, proxy in self:iterate() do
+        local part = {
+            proxy = proxy,
+            x = math.floor(proxy.x + 0.5),
+            y = math.floor(proxy.y + 0.5),
+        }
+        for field in pairs(fields) do
+            part[field] = proxy[field]
+        end
+        table.insert(props, part)
+        table.insert(ids, proxy)
+    end
+    table.sort(ids, function(a, b)
+        return a.id < b.id
+    end)
+    table.sort(props, function(a, b)
+        if a.y < b.y then return  true end
+        if a.y > b.y then return false end
+        if a.x < b.x then return  true end
+        if a.x > b.x then return false end
+        return a.proxy.id < b.proxy.id
+    end)
+    for ix, part in pairs(props) do
+        local proxy = ids[ix]
+        proxy[field_type] = part[field_type]
+        for field in pairs(fields) do
+            if field ~= field_type then
+                proxy[field] = part[field]
+            end
+        end
+    end
+    return self
+end
+
 function particle_set_i:get(property_key)
     local result
     local multiple_values = false
@@ -774,6 +826,22 @@ function particle_set_i:count()
     return self.particle_count
 end
 
+function particle_set_i:array()
+    local exported = {}
+    for id in self:iterate() do
+        table.insert(exported, id)
+    end
+    return exported
+end
+
+function particle_set_i:assoc()
+    local exported = {}
+    for id in self:iterate() do
+        exported[id] = true
+    end
+    return exported
+end
+
 local easy_operators = {
     [ "[]" ] = { takes_name = false, takes_value = 4, func = function(set, _, params)
         return set:bbox(params[1], params[2], params[3], params[4])
@@ -824,13 +892,16 @@ local easy_operators = {
     [ "$" ] = { takes_name = false, takes_value = 0, func = function(set, _, _)
         return set:count()
     end },
+    [ "*" ] = { takes_name = false, takes_value = 0, func = function(set, _, _)
+        return set:reorder()
+    end },
 }
 function particle_set_i:easy(str)
     local counter = 0
     local result = self:clone()
     for word in str:gmatch("%S+") do
         counter = counter + 1
-        local prop, op_str, params_str = word:match("^([%a%d]*)([!=<>?/$+^@]+)([%a%d#.%-,]*)$")
+        local prop, op_str, params_str = word:match("^([%a%d]*)([!=<>?/$*+^@]+)([%a%d#.%-,]*)$")
         if not op_str then
             error("#" .. counter .. ": missing operator")
         end
