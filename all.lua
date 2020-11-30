@@ -532,7 +532,7 @@ function particle_set_i:iterate()
 end
 
 function particle_set_i:bbox(x1, y1, x2, y2)
-    return self:gte("x", x1 - 0.5):gte("y", y1 - 0.5):lt("x", x2 - 0.5):lt("y", y2 - 0.5)
+    return self:gte("x", x1):gte("y", y1):lt("x", x2):lt("y", y2)
 end
 
 function particle_set_i:cursor(width, height)
