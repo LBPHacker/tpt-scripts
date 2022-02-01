@@ -324,7 +324,7 @@ for _, name in pairs({ "x", "y" }) do
     xy_properties[sim["FIELD_" .. name:upper()]] = true
 end
 local float_properties = {}
-for _, name in pairs({ "x", "y", "vx", "vx", "temp", "pavg0", "pavg1" }) do
+for _, name in pairs({ "x", "y", "vx", "vx", "temp" }) do
     float_properties[name] = true
     float_properties[sim["FIELD_" .. name:upper()]] = true
 end
