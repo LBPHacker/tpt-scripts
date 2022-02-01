@@ -104,9 +104,12 @@ do
 end
 elem.property(sppc, "Description", "Single-pixel pipe configurator. Draw over with a pipe type to finalize. Set domain with tmp. Domain 0 is a wildcard.")
 elem.property(sppc, "Graphics", function(i)
+	if sim.partProperty(i, "life") ~= 0 then
+		return 0, ren.PMPDE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
+	end
 	local domain = sim.partProperty(i, "tmp")
 	local rgb = spb_colour_cache[domain]
-	return 0, ren.PMPDE_FLAT, 255, rgb[1], rgb[2], rgb[3], 0, 0, 0, 0
+	return 0, ren.PMPDE_FLAT, 0xFF, rgb[1], rgb[2], rgb[3], 0x00, 0x00, 0x00, 0x00
 end)
 local next_create_tmp, next_create_life, next_create_id
 elem.property(sppc, "Create", function(id)
@@ -129,8 +132,11 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	local x, y = sim.partPosition(id)
 	x = math.floor(x + 0.5)
 	y = math.floor(y + 0.5)
-	local domain = sim.partProperty(id, "tmp")
-	local segment = sim.partProperty(id, "life")
+	local domain1 = sim.partProperty(id, "tmp")
+	local domain2 = sim.partProperty(id, "life")
+	if domain2 == 0 then
+		domain2 = domain1
+	end
 	local seen = {}
 	local path = {}
 	local function push(item)
@@ -145,10 +151,16 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			local yy = y + yoff
 			local r = sim.partID(xx, yy)
 			if r and not seen[r] and sim.partProperty(r, "type") == sppc then
-				local r_domain = sim.partProperty(r, "tmp")
-				local r_segment = sim.partProperty(r, "life")
-				if domain == 0 or r_domain == 0 or (r_domain == domain and segments_connect(r_segment, segment)) then
-					return { id = r, x = xx, y = yy, domain = r_domain, segment = r_segment }
+				local r_domain1 = sim.partProperty(r, "tmp")
+				local r_domain2 = sim.partProperty(r, "life")
+				if r_domain2 == 0 then
+					r_domain2 = r_domain1
+				end
+				if domain1 == r_domain1
+				or domain1 == r_domain2
+				or domain2 == r_domain1
+				or domain2 == r_domain2 then
+					return { id = r, x = xx, y = yy, domain1 = r_domain1, domain2 = r_domain2 }
 				end
 			end
 		end)
@@ -161,13 +173,11 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			print(prefix .. "Forked pipe, candidates marked.")
 			return
 		end
-		x, y, domain, segment = candidates[1].x, candidates[1].y, candidates[1].domain, candidates[1].segment
+		x, y, domain1, domain2 = candidates[1].x, candidates[1].y, candidates[1].domain1, candidates[1].domain2
 		push(candidates[1])
 	end
 	for i = 1, #path do
-		local id, x, y = path[i].id
-		local x = path[i].x
-		local y = path[i].y
+		local id, x, y = path[i].id, path[i].x, path[i].y
 		sim.partProperty(id, "type", ctype)
 		local tmp = bit.bor(0x100, bit.lshift(i % 3 + 1, 18))
 		if i ~= 1 then
@@ -266,53 +276,41 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 		print(prefix .. "Mixed pipe, foreign type marked.")
 		return
 	end
-	local domain = 1
-	while domains_seen[domain] do
-		domain = domain + 1
+	local domain = 0
+	local function next_domain()
+		repeat
+			domain = domain + 1
+		until not domains_seen[domain]
 	end
-	local segment = 0
+	next_domain()
+	local seen_transition = false
 	for i = 1, #path do
 		local transition = false
-		local max_earlier_segment = 0
+		local ignore = { [ path[i].id ] = true }
+		if path[i - 1] then
+			ignore[path[i - 1].id] = true
+		end
+		if path[i + 1] then
+			ignore[path[i + 1].id] = true
+		end
 		for yoff = -1, 1 do
 			for xoff = -1, 1 do
 				local r = sim.partID(path[i].x + xoff, path[i].y + yoff)
-				if  r
-				and r ~= id
-				and parts_seen[r]
-				and sim.partProperty(r, "type") == sppc
-				and sim.partProperty(r, "life") > segment - 2
-				and path[i - 1]
-				and path[i - 1].id ~= r
-				and path[i - 2]
-				and path[i - 2].id ~= r then
+				if r and parts_seen[r] and not ignore[r] then
 					transition = true
-					max_earlier_segment = math.max(max_earlier_segment, sim.partProperty(r, "life"))
 				end
 			end
 		end
-		local id = path[i].id
-		sim.partProperty(id, "type", sppc)
-		sim.partProperty(id, "tmp", domain)
-		sim.partProperty(id, "dcolour", 0)
+		sim.partProperty(path[i].id, "type", sppc)
+		sim.partProperty(path[i].id, "dcolour", 0)
+		sim.partProperty(path[i].id, "tmp", domain)
 		if transition then
-			segment = segment + 1
-			sim.partProperty(id, "dcolour", 0xFFFFFF00)
-			sim.partProperty(path[i - 1].id, "dcolour", 0xFFFFFF00)
-			if max_earlier_segment == segment - 1 then
-				sim.partProperty(path[i - 1].id, "life", segment)
-				if path[i - 2] then
-					sim.partProperty(path[i - 2].id, "dcolour", 0xFFFFFF00)
-				end
-				segment = segment + 1
-			end
+			next_domain()
+			sim.partProperty(path[i].id, "life", domain)
+			seen_transition = true
 		end
-		sim.partProperty(id, "life", segment)
 	end
-	if segment ~= 0 then
-		print(prefix .. "Deconstruction yielded multiple segments, transitions marked.")
-	end
-	if segment >= 0x10000 then
-		print(prefix .. "Deconstruction yielded too many segments, result possibly invalid.")
+	if seen_transition then
+		print(prefix .. "Deconstruction yielded multiple domains.")
 	end
 end)
