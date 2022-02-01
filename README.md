@@ -7,4 +7,5 @@ A collection of scripts for [The Powder Toy][001]. (Yes, currently only one.)
 
 | file       | page on the [script server](https://starcatcher.us/scripts)     |
 | ---------- | --------------------------------------------------------------- |
-| `all.lua`  | [En-masse manipulator](https://starcatcher.us/scripts?view=174) |
+| `all.lua`  | [tpt.all](https://starcatcher.us/scripts?view=174) |
+| `sppipe.lua`  | [Single-pixel pipe configurator](https://starcatcher.us/scripts?view=217) |

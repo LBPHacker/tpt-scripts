@@ -1,7 +1,38 @@
+--[[
+
+Single-pixel pipe configurator script
+LBPHacker, 2022
+
+This script adds a single element: SPPC, the single-pixel pipe configurator.
+
+Basic usage is as simple as drawing a one pixel wide line of SPPC where you want
+PIPE/PPIP to appear, and once satisfied, clicking on either end of the line with
+PIPE/PPIP. This either results in the SPPC line being converted into the pipe
+type of choice, or some error message regarding why the conversion cannot be
+done.
+
+Advanced usage involves "adjacency domains", which let you cross lines of SPPC
+and still have them convert into different pipes that don't leak into one
+another. SPPC considers itself "logically" adjacent to any other, "physically"
+adjacent SPPC if their .tmp values match, or if one of them has a .life value
+that matches the .tmp value of the other. Physical adjacency is just being
+adjacent on the pixel grid. Logical adjacency is what is used to discover the
+bounds of the pipe to be converted.
+
+SPPC of different .tmp are rendered with different, vibrant colours. A special
+case is .life != 0 SPPC, which is rendered with white, indicating that it acts
+as a bridge between SPPC domains.
+
+Replacing (with replace mode; press Insert) any particle of a correctly
+configured single-pixel pipe converts the entire pipe (back) into SPPC, using
+as few .life != 0 "bridge" particles as possible.
+
+]]
+
 assert(tpt.version and tpt.version.major >= 95, "version not supported")
 
 local prefix = "\bt[SPPIPE]\bw "
-local default_tmp = 1
+local default_tmp = 0
 local default_life = 0
 
 tpt.sppipe = tpt.sppipe or {}
@@ -107,7 +138,7 @@ do
 	local default_colour = spb_colour_cache[default_tmp]
 	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
 end
-elem.property(sppc, "Description", "Single-pixel pipe configurator. Draw over with a pipe type to finalize. Set domain with tmp. Domain 0 is a wildcard.")
+elem.property(sppc, "Description", "Single-pixel pipe configurator. See the script description for usage.")
 elem.property(sppc, "Graphics", function(i)
 	if sim.partProperty(i, "life") ~= 0 then
 		return 0, ren.PMPDE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
