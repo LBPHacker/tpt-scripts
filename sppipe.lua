@@ -38,19 +38,6 @@ local spb_colour_cache = setmetatable({}, { __index = function(tbl, key)
 	return dcolour
 end })
 
-local function alloc_elem(name)
-	local id = elem.allocate("LBPHACKER", name)
-	if id == -1 then
-		print(prefix .. "Failed to allocate element " .. name .. ": out of element IDs.")
-		return
-	end
-	tpt.sppipe[name] = id
-	elem.element(id, elem.element(elem.DEFAULT_PT_DMND))
-	elem.property(id, "Name", name)
-	elem.property(id, "MenuSection", elem.SC_TOOL)
-	return id
-end
-
 local pos_1_rx = { -1, -1, -1,  0,  0,  1,  1,  1 }
 local pos_1_ry = { -1,  0,  1, -1,  1, -1,  0,  1 }
 local function get_dir(to, from)
@@ -97,7 +84,25 @@ local pipe_types = {
 	[ elem.DEFAULT_PT_PPIP ] = true,
 }
 
-local sppc = alloc_elem("SPPC")
+local function get_domains(id)
+	local domain1 = sim.partProperty(id, "tmp")
+	local domain2 = sim.partProperty(id, "life")
+	if domain2 == 0 then
+		domain2 = domain1
+	end
+	return domain1, domain2
+end
+
+local sppc = elem.allocate("LBPHACKER", "SPPC")
+if sppc == -1 then
+	print(prefix .. "Failed to allocate SPPC: out of element IDs.")
+	return
+end
+tpt.sppipe.SPPC = sppc
+elem.element(sppc, elem.element(elem.DEFAULT_PT_DMND))
+elem.property(sppc, "Name", "SPPC")
+elem.property(sppc, "MenuSection", elem.SC_TOOL)
+
 do
 	local default_colour = spb_colour_cache[default_tmp]
 	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
@@ -132,11 +137,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	local x, y = sim.partPosition(id)
 	x = math.floor(x + 0.5)
 	y = math.floor(y + 0.5)
-	local domain1 = sim.partProperty(id, "tmp")
-	local domain2 = sim.partProperty(id, "life")
-	if domain2 == 0 then
-		domain2 = domain1
-	end
+	local domain1, domain2 = get_domains(id)
 	local seen = {}
 	local path = {}
 	local function push(item)
@@ -151,11 +152,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			local yy = y + yoff
 			local r = sim.partID(xx, yy)
 			if r and not seen[r] and sim.partProperty(r, "type") == sppc then
-				local r_domain1 = sim.partProperty(r, "tmp")
-				local r_domain2 = sim.partProperty(r, "life")
-				if r_domain2 == 0 then
-					r_domain2 = r_domain1
-				end
+				local r_domain1, r_domain2 = get_domains(r)
 				if domain1 == r_domain1
 				or domain1 == r_domain2
 				or domain2 == r_domain1
@@ -265,7 +262,9 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 		table.insert(path, reverse_path[i])
 	end
 	local mixed = false
+	local id_to_index = {}
 	for i = 1, #path do
+		id_to_index[path[i].id] = i
 		local ptype = sim.partProperty(path[i].id, "type")
 		if ptype ~= otype and ptype ~= sppc then
 			mixed = true
@@ -276,41 +275,49 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 		print(prefix .. "Mixed pipe, foreign type marked.")
 		return
 	end
-	local domain = 0
+	local lower_bound_sets = {}
+	for i = 1, #path do
+		lower_bound_sets[i] = {}
+	end
+	for i = 1, #path do
+		neighbourhood_prefer_nondiagonal(function(xoff, yoff)
+			local r = sim.partID(path[i].x + xoff, path[i].y + yoff)
+			if r and id_to_index[r] and id_to_index[r] > i + 1 then
+				table.insert(lower_bound_sets[id_to_index[r]], i + 1)
+			end
+			if r and id_to_index[r] and id_to_index[r] == i + 1 then
+				return true
+			end
+		end)
+	end
+	local global_domain = 0
 	local function next_domain()
 		repeat
-			domain = domain + 1
-		until not domains_seen[domain]
+			global_domain = global_domain + 1
+		until not domains_seen[global_domain]
 	end
+	local local_domain = 1
 	next_domain()
-	local seen_transition = false
+	local last_global_domain = global_domain
+	local index_to_domain = {}
 	for i = 1, #path do
-		local transition = false
-		local ignore = { [ path[i].id ] = true }
-		if path[i - 1] then
-			ignore[path[i - 1].id] = true
-		end
-		if path[i + 1] then
-			ignore[path[i + 1].id] = true
-		end
-		for yoff = -1, 1 do
-			for xoff = -1, 1 do
-				local r = sim.partID(path[i].x + xoff, path[i].y + yoff)
-				if r and parts_seen[r] and not ignore[r] then
-					transition = true
-				end
+		for j = 1, #lower_bound_sets[i] do
+			while index_to_domain[lower_bound_sets[i][j]] >= local_domain do
+				local_domain = local_domain + 1
+				next_domain()
 			end
 		end
 		sim.partProperty(path[i].id, "type", sppc)
 		sim.partProperty(path[i].id, "dcolour", 0)
-		sim.partProperty(path[i].id, "tmp", domain)
-		if transition then
-			next_domain()
-			sim.partProperty(path[i].id, "life", domain)
-			seen_transition = true
+		sim.partProperty(path[i].id, "tmp", global_domain)
+		index_to_domain[i] = local_domain
+		if last_global_domain ~= global_domain then
+			assert(path[i - 1])
+			sim.partProperty(path[i - 1].id, "life", global_domain)
 		end
+		last_global_domain = global_domain
 	end
-	if seen_transition then
+	if local_domain > 1 then
 		print(prefix .. "Deconstruction yielded multiple domains.")
 	end
 end)
