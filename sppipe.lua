@@ -32,13 +32,9 @@ as few .life != 0 "bridge" particles as possible.
 assert(tpt.version and tpt.version.major >= 95, "version not supported")
 
 local prefix = "\bt[SPPIPE]\bw "
-local default_tmp = 0
-local default_life = 0
 
 tpt.sppipe = tpt.sppipe or {}
-for _, value in pairs(tpt.sppipe) do
-	pcall(elem.free, value)
-end
+pcall(elem.free, tpt.sppipe.SPPC)
 
 local function hsv2dcolour(h, s, v)
 	local sector = math.floor(h * 6)
@@ -124,6 +120,13 @@ local function get_domains(id)
 	return domain1, domain2
 end
 
+local function get_position(id)
+	local x, y = sim.partPosition(id)
+	x = math.floor(x + 0.5)
+	y = math.floor(y + 0.5)
+	return x, y
+end
+
 local sppc = elem.allocate("LBPHACKER", "SPPC")
 if sppc == -1 then
 	print(prefix .. "Failed to allocate SPPC: out of element IDs.")
@@ -135,7 +138,7 @@ elem.property(sppc, "Name", "SPPC")
 elem.property(sppc, "MenuSection", elem.SC_TOOL)
 
 do
-	local default_colour = spb_colour_cache[default_tmp]
+	local default_colour = spb_colour_cache[0]
 	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
 end
 elem.property(sppc, "Description", "Single-pixel pipe configurator. See the script description for usage.")
@@ -147,27 +150,11 @@ elem.property(sppc, "Graphics", function(i)
 	local rgb = spb_colour_cache[domain]
 	return 0, ren.PMPDE_FLAT, 0xFF, rgb[1], rgb[2], rgb[3], 0x00, 0x00, 0x00, 0x00
 end)
-local next_create_tmp, next_create_life, next_create_id
-elem.property(sppc, "Create", function(id)
-	local tmp = default_tmp
-	local life = default_life
-	if next_create_tmp and next_create_id == id then
-		tmp = next_create_tmp
-		life = next_create_life
-		next_create_tmp = nil
-		next_create_life = nil
-		next_create_id = nil
-	end
-	sim.partProperty(id, "tmp", tmp)
-	sim.partProperty(id, "life", life)
-end)
 elem.property(sppc, "CtypeDraw", function(id, ctype)
 	if not pipe_types[ctype] then
 		return
 	end
-	local x, y = sim.partPosition(id)
-	x = math.floor(x + 0.5)
-	y = math.floor(y + 0.5)
+	local x, y = get_position(id)
 	local domain1, domain2 = get_domains(id)
 	local seen = {}
 	local path = {}
@@ -176,7 +163,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 		table.insert(path, item)
 		sim.partProperty(item.id, "dcolour", 0xFF00FF00)
 	end
-	push({ id = id, x = x, y = y })
+	push({ id = id, x = x, y = y, ptype = ctype })
 	while true do
 		local candidates = neighbourhood_prefer_nondiagonal(function(xoff, yoff)
 			local xx = x + xoff
@@ -188,7 +175,11 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 				or domain1 == r_domain2
 				or domain2 == r_domain1
 				or domain2 == r_domain2 then
-					return { id = r, x = xx, y = yy, domain1 = r_domain1, domain2 = r_domain2 }
+					local ptype = sim.partProperty(r, "ctype")
+					if not pipe_types[ptype] then
+						ptype = ctype
+					end
+					return { id = r, x = xx, y = yy, domain1 = r_domain1, domain2 = r_domain2, ptype = ptype }
 				end
 			end
 		end)
@@ -206,7 +197,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	end
 	for i = 1, #path do
 		local id, x, y = path[i].id, path[i].x, path[i].y
-		sim.partProperty(id, "type", ctype)
+		sim.partProperty(id, "type", path[i].ptype)
 		local tmp = bit.bor(0x100, bit.lshift(i % 3 + 1, 18))
 		if i ~= 1 then
 			tmp = bit.bor(tmp, bit.lshift(get_dir(path[i], path[i - 1]), 14), 0x2000)
@@ -215,27 +206,109 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			tmp = bit.bor(tmp, bit.lshift(get_dir(path[i], path[i + 1]), 10), 0x200)
 		end
 		sim.partProperty(id, "tmp", tmp)
+		sim.partProperty(id, "ctype", 0)
 		sim.partProperty(id, "life", 0)
 		sim.partProperty(id, "dcolour", 0)
 	end
 end)
-elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
-	if otype == sppc and ntype == sppc then
-		-- Hack: Smuggle SPPC's tmp and life through the replacement with itself.
-		next_create_tmp = sim.partProperty(id, "tmp")
-		next_create_life = sim.partProperty(id, "life")
-		next_create_id = id
+
+--[[
+local space_types = {
+	[ elem.DEFAULT_PT_NONE ] = true,
+	[ elem.DEFAULT_PT_PRTO ] = true,
+	[ elem.DEFAULT_PT_PRTI ] = true,
+	[ elem.DEFAULT_PT_STOR ] = true,
+}
+
+local seq_forward = { [ 1 ] = 2, [ 2 ] = 3, [ 3 ] = 1 }
+local seq_reverse = { [ 2 ] = 1, [ 3 ] = 2, [ 1 ] = 3 }
+local function route_multi(id)
+	local undirected = {}
+	do
+		-- local function get_output(v_in)
+		-- 	return v_in .. "'"
+		-- end
+		-- local function ensure_vertex(v_in)
+		-- 	if not undirected[v_in] then
+		-- 		local v_out = get_output(v_in)
+		-- 		undirected[v_in] = {}
+		-- 		undirected[v_out] = {}
+		-- 		undirected[v_in][v_out] = 1
+		-- 		undirected[v_out][v_in] = -1
+		-- 	end
+		-- end
+		-- local function push_edge(u_in, v_in)
+		-- 	ensure_vertex(u_in)
+		-- 	ensure_vertex(v_in)
+		-- 	undirected[get_output(v_in)][u_in] = 
+		-- end
+		local queue = { id }
+		local seen = { [ id ] = true }
+		local current = 1
+		local last = 1
+		while queue[current] do
+			local curr = queue[current]
+			local seq = bit.rshift(sim.partProperty(curr, "tmp"), 18)
+			local x, y = get_position(curr)
+			local found_input = true
+			local found_output = true
+			local found_space = false
+			for yoff = -1, 1 do
+				for xoff = -1, 1 do
+					local r = sim.partID(x + xoff, y + yoff)
+					local rtype = r and sim.partProperty(r, "type") or elem.DEFAULT_PT_NONE
+					if space_types[rtype] then
+						found_space = true
+					end
+					if pipe_types[rtype] then
+						-- push_edge(curr, r)
+						local rseq = bit.rshift(sim.partProperty(r, "tmp"), 18)
+						if seq_forward[seq] == rseq then
+							found_output = false
+						end
+						if seq_reverse[seq] == rseq then
+							found_input = false
+						end
+						if not seen[r] then
+							seen[r] = true
+							last = last + 1
+							queue[last] = r
+						end
+					end
+				end
+			end
+			if found_input and found_space then
+				sim.partProperty(curr, "dcolour", 0xFFFF0000)
+			elseif found_output and found_space then
+				sim.partProperty(curr, "dcolour", 0xFF0000FF)
+			else
+				sim.partProperty(curr, "dcolour", 0xFF00FF00)
+			end
+			queue[current] = nil
+			current = current + 1
+		end
+	end
+end
+]]
+
+local function pipe_ctypedraw(id, ctype)
+	if ctype ~= sppc then
 		return
 	end
-	if not pipe_types[otype] then
+	local x, y = get_position(id)
+	local otype = sim.partProperty(id, "type")
+	if bit.band(sim.partProperty(id, "tmp"), 0x100) == 0 then
+		-- route_multi(id)
+		print(prefix .. "Not a single-pixel pipe.")
 		return
 	end
 	local domains_seen = {}
 	local parts_seen = { [ id ] = true }
-	local function neighbourhood_checker(adjacent, replaced)
+	local function neighbourhood_checker(adjacent, origin)
+		local torigin = { x = origin.x, y = origin.y, tmp = sim.partProperty(sim.partID(origin.x, origin.y), "tmp") }
 		return function(xoff, yoff)
-			local xx = replaced.x + xoff
-			local yy = replaced.y + yoff
+			local xx = torigin.x + xoff
+			local yy = torigin.y + yoff
 			local r = sim.partID(xx, yy)
 			if r and sim.partProperty(r, "type") == sppc and r ~= id then
 				local domain = sim.partProperty(r, "tmp")
@@ -243,7 +316,8 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 			end
 			if r and pipe_types[sim.partProperty(r, "type")] then
 				local tmp = sim.partProperty(r, "tmp")
-				if bit.band(tmp, 0x100) ~= 0 and adjacent(tmp, { x = xx, y = yy }, replaced) then
+				local neighbour = { x = xx, y = yy, tmp = tmp }
+				if bit.band(tmp, 0x100) ~= 0 and adjacent(neighbour, torigin) then
 					return { id = r, x = xx, y = yy }
 				end
 			end
@@ -275,14 +349,36 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 		end
 		return path
 	end
-	local forward_path = traverse(function(tmp, neighbour, replaced)
-		return (bit.band(tmp, 0x200) ~= 0 and bit.rshift(bit.band(tmp, 0x1C00), 10)) == get_dir(neighbour, replaced)
+	local function forward_link(first, second)
+		return (bit.band(first.tmp, 0x200) ~= 0 and bit.rshift(bit.band(first.tmp, 0x1C00), 10)) == get_dir(first, second)
+	end
+	local function reverse_link(first, second)
+		return (bit.band(first.tmp, 0x2000) ~= 0 and bit.rshift(bit.band(first.tmp, 0x1C000), 14)) == get_dir(first, second)
+	end
+	local broken_links = false
+	local forward_path = traverse(function(neighbour, origin)
+		local score = 0
+		score = score + (forward_link(neighbour, origin) and 1 or 0)
+		score = score + (reverse_link(origin, neighbour) and 1 or 0)
+		if score == 1 then
+			broken_links = true
+		end
+		return score > 0
 	end)
-	local reverse_path = traverse(function(tmp, neighbour, replaced)
-		return (bit.band(tmp, 0x2000) ~= 0 and bit.rshift(bit.band(tmp, 0x1C000), 14)) == get_dir(neighbour, replaced)
+	local reverse_path = traverse(function(neighbour, origin)
+		local score = 0
+		score = score + (reverse_link(neighbour, origin) and 1 or 0)
+		score = score + (forward_link(origin, neighbour) and 1 or 0)
+		if score == 1 then
+			broken_links = true
+		end
+		return score > 0
 	end)
 	if not forward_path or not reverse_path then
 		return
+	end
+	if broken_links then
+		print(prefix .. "Broken links encountered.")
 	end
 	local path = {}
 	for i = #forward_path, 1, -1 do
@@ -292,19 +388,10 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 	for i = 1, #reverse_path do
 		table.insert(path, reverse_path[i])
 	end
-	local mixed = false
 	local id_to_index = {}
 	for i = 1, #path do
 		id_to_index[path[i].id] = i
-		local ptype = sim.partProperty(path[i].id, "type")
-		if ptype ~= otype and ptype ~= sppc then
-			mixed = true
-			sim.partProperty(path[i].id, "dcolour", 0xFFFF0000)
-		end
-	end
-	if mixed then
-		print(prefix .. "Mixed pipe, foreign type marked.")
-		return
+		path[i].ptype = sim.partProperty(path[i].id, "type")
 	end
 	local lower_bound_sets = {}
 	for i = 1, #path do
@@ -321,26 +408,31 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 			end
 		end)
 	end
-	local global_domain = 0
+	local parts_lost = false
+	local local_domain = 0
+	local global_domain = -1
 	local function next_domain()
+		local_domain = local_domain + 1
 		repeat
 			global_domain = global_domain + 1
 		until not domains_seen[global_domain]
 	end
-	local local_domain = 1
 	next_domain()
 	local last_global_domain = global_domain
 	local index_to_domain = {}
 	for i = 1, #path do
 		for j = 1, #lower_bound_sets[i] do
 			while index_to_domain[lower_bound_sets[i][j]] >= local_domain do
-				local_domain = local_domain + 1
 				next_domain()
 			end
+		end
+		if sim.partProperty(path[i].id, "ctype") ~= 0 then
+			parts_lost = true
 		end
 		sim.partProperty(path[i].id, "type", sppc)
 		sim.partProperty(path[i].id, "dcolour", 0)
 		sim.partProperty(path[i].id, "tmp", global_domain)
+		sim.partProperty(path[i].id, "ctype", path[i].ptype)
 		index_to_domain[i] = local_domain
 		if last_global_domain ~= global_domain then
 			assert(path[i - 1])
@@ -349,6 +441,13 @@ elem.property(sppc, "ChangeType", function(id, x, y, otype, ntype)
 		last_global_domain = global_domain
 	end
 	if local_domain > 1 then
-		print(prefix .. "Deconstruction yielded multiple domains.")
+		print(prefix .. "Process yielded multiple domains.")
 	end
-end)
+	if parts_lost then
+		print(prefix .. "In-pipe particles lost.")
+	end
+end
+
+for ptype in pairs(pipe_types) do
+	elem.property(ptype, "CtypeDraw", pipe_ctypedraw)
+end
