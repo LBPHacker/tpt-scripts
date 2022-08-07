@@ -79,7 +79,7 @@ local function get_dir(to, from)
 	return assert(dir)
 end
 
-local function neighbourhood_prefer_nondiagonal(try_next)
+local function neighbourhood(try_next, prefer_nondiagonal)
 	local candidates = {}
 	local function try_next_wrapper(xoff, yoff)
 		local candidate = try_next(xoff, yoff)
@@ -91,7 +91,7 @@ local function neighbourhood_prefer_nondiagonal(try_next)
 	try_next_wrapper( 1,  0)
 	try_next_wrapper( 0, -1)
 	try_next_wrapper( 0,  1)
-	if #candidates == 0 then
+	if not prefer_nondiagonal or #candidates == 0 then
 		try_next_wrapper(-1, -1)
 		try_next_wrapper( 1, -1)
 		try_next_wrapper(-1,  1)
@@ -141,7 +141,7 @@ do
 	local default_colour = spb_colour_cache[0]
 	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
 end
-elem.property(sppc, "Description", "Single-pixel pipe configurator. See the script description for usage.")
+elem.property(sppc, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for usage.")
 elem.property(sppc, "Graphics", function(i)
 	if sim.partProperty(i, "life") ~= 0 then
 		return 0, ren.PMPDE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
@@ -165,7 +165,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	end
 	push({ id = id, x = x, y = y, ptype = ctype })
 	while true do
-		local candidates = neighbourhood_prefer_nondiagonal(function(xoff, yoff)
+		local candidates = neighbourhood(function(xoff, yoff)
 			local xx = x + xoff
 			local yy = y + yoff
 			local r = sim.partID(xx, yy)
@@ -182,7 +182,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 					return { id = r, x = xx, y = yy, domain1 = r_domain1, domain2 = r_domain2, ptype = ptype }
 				end
 			end
-		end)
+		end, true)
 		if #candidates == 0 then
 			break
 		elseif #candidates > 1 then
@@ -327,7 +327,7 @@ local function pipe_ctypedraw(id, ctype)
 		local path = {}
 		local last = { x = x, y = y }
 		while true do
-			local candidates = neighbourhood_prefer_nondiagonal(neighbourhood_checker(func, last))
+			local candidates = neighbourhood(neighbourhood_checker(func, last), false)
 			if #candidates == 0 then
 				break
 			elseif #candidates > 1 then
@@ -398,7 +398,7 @@ local function pipe_ctypedraw(id, ctype)
 		lower_bound_sets[i] = {}
 	end
 	for i = 1, #path do
-		neighbourhood_prefer_nondiagonal(function(xoff, yoff)
+		neighbourhood(function(xoff, yoff)
 			local r = sim.partID(path[i].x + xoff, path[i].y + yoff)
 			if r and id_to_index[r] and id_to_index[r] > i + 1 then
 				table.insert(lower_bound_sets[id_to_index[r]], i + 1)
@@ -406,7 +406,7 @@ local function pipe_ctypedraw(id, ctype)
 			if r and id_to_index[r] and id_to_index[r] == i + 1 then
 				return true
 			end
-		end)
+		end, false)
 	end
 	local parts_lost = false
 	local local_domain = 0
