@@ -79,7 +79,7 @@ local function get_dir(to, from)
 	return assert(dir)
 end
 
-local function neighbourhood(try_next)
+local function neighbourhood(try_next, prefer_nondiagonal)
 	local candidates = {}
 	local function try_next_wrapper(xoff, yoff)
 		local candidate = try_next(xoff, yoff)
@@ -91,10 +91,12 @@ local function neighbourhood(try_next)
 	try_next_wrapper( 1,  0)
 	try_next_wrapper( 0, -1)
 	try_next_wrapper( 0,  1)
-	try_next_wrapper(-1, -1)
-	try_next_wrapper( 1, -1)
-	try_next_wrapper(-1,  1)
-	try_next_wrapper( 1,  1)
+	if not prefer_nondiagonal or #candidates == 0 then
+		try_next_wrapper(-1, -1)
+		try_next_wrapper( 1, -1)
+		try_next_wrapper(-1,  1)
+		try_next_wrapper( 1,  1)
+	end
 	return candidates
 end
 
@@ -180,7 +182,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 					return { id = r, x = xx, y = yy, domain1 = r_domain1, domain2 = r_domain2, ptype = ptype }
 				end
 			end
-		end)
+		end, true)
 		if #candidates == 0 then
 			break
 		elseif #candidates > 1 then
@@ -325,7 +327,7 @@ local function pipe_ctypedraw(id, ctype)
 		local path = {}
 		local last = { x = x, y = y }
 		while true do
-			local candidates = neighbourhood(neighbourhood_checker(func, last))
+			local candidates = neighbourhood(neighbourhood_checker(func, last), false)
 			if #candidates == 0 then
 				break
 			elseif #candidates > 1 then
@@ -404,7 +406,7 @@ local function pipe_ctypedraw(id, ctype)
 			if r and id_to_index[r] and id_to_index[r] == i + 1 then
 				return true
 			end
-		end)
+		end, false)
 	end
 	local parts_lost = false
 	local local_domain = 0
