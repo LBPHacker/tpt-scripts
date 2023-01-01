@@ -1,7 +1,7 @@
 --[[
 
 Single-pixel pipe configurator script
-LBPHacker, 2022
+LBPHacker, 2022-2023
 
 This script adds a single element: SPPC, the single-pixel pipe configurator.
 
