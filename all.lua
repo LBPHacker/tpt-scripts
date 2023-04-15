@@ -176,6 +176,11 @@ There are many more filters than boolean operations:
         -- equivalent to !set ctype clne phot
     tpt.all():eq("type", "clne"):set("ctype", "phot")
 
+All of the above take an optional boolean argument "eyeball_xy", which reduces
+their precision such that x/y readings taken from the HUD can be used with them.
+For example, a particle may be at x = 8.7, but :gte("x", 9, true) will match it,
+because 8.7 rounds up to 9.
+
  - set_1:bbox(left, top, right, bottom) (Bounding BOX) yields a set with the
    particles from set_1 that also happen to fall in the area defined by the
    positions 'left', 'top', 'right' and 'bottom'. These positions follow the
@@ -215,11 +220,16 @@ don't make it into the set because 'right' and 'bottom' are exclusive.
         -- in the [100, 300) * [200, 400) bounding box
     tpt.all():eq("type", "clne"):bbox(100, 200, 300, 400):set("ctype", "phot")
 
+:bbox also takes an optional boolean argument "eyeball_xy".
+
  - set_1:cursor(width, height) is just set_1:bbox(M(width, height)), where
    M returns the current mouse vector and the same vector offset by
    [width, height]. In other words, this takes a bounding box whose top left
    corner is wherever the cursor is, and whose dimensions are specified by
    width and height.
+
+:cursor also takes an optional boolean argument "eyeball_xy".
+
  - finally set_1:filter(func, ...), which you can use if no other filter does
    what you want: it calls func for all particles in the set (func gets the
    proxy as its first parameter and the ... after that); this function must
@@ -531,13 +541,13 @@ function particle_set_i:iterate()
     return self.next, self
 end
 
-function particle_set_i:bbox(x1, y1, x2, y2)
-    return self:gte("x", x1):gte("y", y1):lt("x", x2):lt("y", y2)
+function particle_set_i:bbox(x1, y1, x2, y2, eyeball_xy)
+    return self:gte("x", x1, eyeball_xy):gte("y", y1, eyeball_xy):lt("x", x2, eyeball_xy):lt("y", y2, eyeball_xy)
 end
 
-function particle_set_i:cursor(width, height)
+function particle_set_i:cursor(width, height, eyeball_xy)
     local x, y = sim.adjustCoords(tpt.mousex, tpt.mousey)
-    return self:bbox(x, y, x + width, y + height)
+    return self:bbox(x, y, x + width, y + height, eyeball_xy)
 end
 
 function particle_set_i:filter(func, ...)
@@ -556,13 +566,13 @@ function particle_set_i:clone()
     end)
 end
 
-function particle_set_i:eq(property_key, property_value, no_adjust_xy, epsilon)
+function particle_set_i:eq(property_key, property_value, eyeball_xy, epsilon)
     property_value = prop_value(property_value)
     if float_properties[property_key] then
         epsilon = epsilon or default_epsilon
-        if not no_adjust_xy and xy_properties[property_key] then
+        if eyeball_xy and xy_properties[property_key] then
             return self:filter(function(proxy)
-                return math.abs(proxy[property_key] + 0.5 - property_value) < epsilon
+                return math.floor(proxy[property_key] + 0.5) == property_value
             end)
         else
             return self:filter(function(proxy)
@@ -576,13 +586,13 @@ function particle_set_i:eq(property_key, property_value, no_adjust_xy, epsilon)
     end
 end
 
-function particle_set_i:neq(property_key, property_value, no_adjust_xy, epsilon)
+function particle_set_i:neq(property_key, property_value, eyeball_xy, epsilon)
     property_value = prop_value(property_value)
     if float_properties[property_key] then
         epsilon = epsilon or default_epsilon
-        if not no_adjust_xy and xy_properties[property_key] then
+        if eyeball_xy and xy_properties[property_key] then
             return self:filter(function(proxy)
-                return math.abs(proxy[property_key] + 0.5 - property_value) >= epsilon
+                return math.floor(proxy[property_key] + 0.5) ~= property_value
             end)
         else
             return self:filter(function(proxy)
@@ -596,11 +606,11 @@ function particle_set_i:neq(property_key, property_value, no_adjust_xy, epsilon)
     end
 end
 
-function particle_set_i:gt(property_key, property_value, no_adjust_xy)
+function particle_set_i:gt(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
-    if not no_adjust_xy and xy_properties[property_key] then
+    if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return proxy[property_key] + 0.5 > property_value
+            return math.floor(proxy[property_key] + 0.5) > property_value
         end)
     else
         return self:filter(function(proxy)
@@ -609,11 +619,11 @@ function particle_set_i:gt(property_key, property_value, no_adjust_xy)
     end
 end
 
-function particle_set_i:gte(property_key, property_value, no_adjust_xy)
+function particle_set_i:gte(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
-    if not no_adjust_xy and xy_properties[property_key] then
+    if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return proxy[property_key] + 0.5 >= property_value
+            return math.floor(proxy[property_key] + 0.5) >= property_value
         end)
     else
         return self:filter(function(proxy)
@@ -622,11 +632,11 @@ function particle_set_i:gte(property_key, property_value, no_adjust_xy)
     end
 end
 
-function particle_set_i:lt(property_key, property_value, no_adjust_xy)
+function particle_set_i:lt(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
-    if not no_adjust_xy and xy_properties[property_key] then
+    if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return proxy[property_key] + 0.5 < property_value
+            return math.floor(proxy[property_key] + 0.5) < property_value
         end)
     else
         return self:filter(function(proxy)
@@ -635,11 +645,11 @@ function particle_set_i:lt(property_key, property_value, no_adjust_xy)
     end
 end
 
-function particle_set_i:lte(property_key, property_value, no_adjust_xy)
+function particle_set_i:lte(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
-    if not no_adjust_xy and xy_properties[property_key] then
+    if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return proxy[property_key] + 0.5 <= property_value
+            return math.floor(proxy[property_key] + 0.5) <= property_value
         end)
     else
         return self:filter(function(proxy)
