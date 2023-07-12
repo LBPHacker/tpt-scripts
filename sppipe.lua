@@ -9,23 +9,27 @@ Basic usage is as simple as drawing a one pixel wide line of SPPC where you want
 PIPE/PPIP to appear, and once satisfied, clicking on either end of the line with
 PIPE/PPIP. This either results in the SPPC line being converted into the pipe
 type of choice, or some error message regarding why the conversion cannot be
-done.
+done. If conversion succeeds, the clicked end will be the input of the pipe.
+
+Note that the process prefers non-diagonal neighbours over diagonal ones. This
+is done so free-form drawn lines of SPPC can be converted to pipes easily, even
+if they include L-shaped parts, which would be considered forks otherwise.
 
 Advanced usage involves "adjacency domains", which let you cross lines of SPPC
 and still have them convert into different pipes that don't leak into one
 another. SPPC considers itself "logically" adjacent to any other, "physically"
 adjacent SPPC if their .tmp values match, or if one of them has a .life value
 that matches the .tmp value of the other. Physical adjacency is just being
-adjacent on the pixel grid. Logical adjacency is what is used to discover the
-bounds of the pipe to be converted.
+adjacent on the pixel grid. Logical adjacency is what matters when discovering
+the bounds of the pipe to be converted.
 
 SPPC of different .tmp are rendered with different, vibrant colours. A special
 case is .life != 0 SPPC, which is rendered with white, indicating that it acts
 as a bridge between SPPC domains.
 
-Replacing (with replace mode; press Insert) any particle of a correctly
-configured single-pixel pipe converts the entire pipe (back) into SPPC, using
-as few .life != 0 "bridge" particles as possible.
+Drawing SPPC over any particle (the way you would normally set the ctype of
+CLNE, for example) of a correctly configured single-pixel pipe converts the
+entire pipe into SPPC, using as few bridge particles as possible.
 
 ]]
 
@@ -60,7 +64,7 @@ local function hsv2dcolour(h, s, v)
 end
 
 local spb_colour_cache = setmetatable({}, { __index = function(tbl, key)
-	local dcolour = hsv2dcolour((0.7 + key * 0.381763) % 1, 0.7, 1)
+	local dcolour = hsv2dcolour((0.318237 + key * 0.381763) % 1, 0.7, 1)
 	tbl[key] = dcolour
 	return dcolour
 end })
@@ -138,9 +142,12 @@ elem.property(sppc, "Name", "SPPC")
 elem.property(sppc, "MenuSection", elem.SC_TOOL)
 
 do
-	local default_colour = spb_colour_cache[0]
+	local default_colour = spb_colour_cache[1]
 	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
 end
+elem.property(sppc, "DefaultProperties", {
+	tmp = 1,
+})
 elem.property(sppc, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for usage.")
 elem.property(sppc, "Graphics", function(i)
 	if sim.partProperty(i, "life") ~= 0 then
@@ -198,6 +205,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	for i = 1, #path do
 		local id, x, y = path[i].id, path[i].x, path[i].y
 		sim.partProperty(id, "type", path[i].ptype)
+		-- print(path[i].ptype, sim.partProperty(id, "type"))
 		local tmp = bit.bor(0x100, bit.lshift(i % 3 + 1, 18))
 		if i ~= 1 then
 			tmp = bit.bor(tmp, bit.lshift(get_dir(path[i], path[i - 1]), 14), 0x2000)
@@ -211,85 +219,6 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 		sim.partProperty(id, "dcolour", 0)
 	end
 end)
-
---[[
-local space_types = {
-	[ elem.DEFAULT_PT_NONE ] = true,
-	[ elem.DEFAULT_PT_PRTO ] = true,
-	[ elem.DEFAULT_PT_PRTI ] = true,
-	[ elem.DEFAULT_PT_STOR ] = true,
-}
-
-local seq_forward = { [ 1 ] = 2, [ 2 ] = 3, [ 3 ] = 1 }
-local seq_reverse = { [ 2 ] = 1, [ 3 ] = 2, [ 1 ] = 3 }
-local function route_multi(id)
-	local undirected = {}
-	do
-		-- local function get_output(v_in)
-		-- 	return v_in .. "'"
-		-- end
-		-- local function ensure_vertex(v_in)
-		-- 	if not undirected[v_in] then
-		-- 		local v_out = get_output(v_in)
-		-- 		undirected[v_in] = {}
-		-- 		undirected[v_out] = {}
-		-- 		undirected[v_in][v_out] = 1
-		-- 		undirected[v_out][v_in] = -1
-		-- 	end
-		-- end
-		-- local function push_edge(u_in, v_in)
-		-- 	ensure_vertex(u_in)
-		-- 	ensure_vertex(v_in)
-		-- 	undirected[get_output(v_in)][u_in] = 
-		-- end
-		local queue = { id }
-		local seen = { [ id ] = true }
-		local current = 1
-		local last = 1
-		while queue[current] do
-			local curr = queue[current]
-			local seq = bit.rshift(sim.partProperty(curr, "tmp"), 18)
-			local x, y = get_position(curr)
-			local found_input = true
-			local found_output = true
-			local found_space = false
-			for yoff = -1, 1 do
-				for xoff = -1, 1 do
-					local r = sim.partID(x + xoff, y + yoff)
-					local rtype = r and sim.partProperty(r, "type") or elem.DEFAULT_PT_NONE
-					if space_types[rtype] then
-						found_space = true
-					end
-					if pipe_types[rtype] then
-						-- push_edge(curr, r)
-						local rseq = bit.rshift(sim.partProperty(r, "tmp"), 18)
-						if seq_forward[seq] == rseq then
-							found_output = false
-						end
-						if seq_reverse[seq] == rseq then
-							found_input = false
-						end
-						if not seen[r] then
-							seen[r] = true
-							last = last + 1
-							queue[last] = r
-						end
-					end
-				end
-			end
-			if found_input and found_space then
-				sim.partProperty(curr, "dcolour", 0xFFFF0000)
-			elseif found_output and found_space then
-				sim.partProperty(curr, "dcolour", 0xFF0000FF)
-			else
-				sim.partProperty(curr, "dcolour", 0xFF00FF00)
-			end
-			queue[current] = nil
-			current = current + 1
-		end
-	end
-end
-]]
 
 local function pipe_ctypedraw(id, ctype)
 	if ctype ~= sppc then
@@ -406,11 +335,11 @@ local function pipe_ctypedraw(id, ctype)
 			if r and id_to_index[r] and id_to_index[r] == i + 1 then
 				return true
 			end
-		end, false)
+		end, true)
 	end
 	local parts_lost = false
 	local local_domain = 0
-	local global_domain = -1
+	local global_domain = 0
 	local function next_domain()
 		local_domain = local_domain + 1
 		repeat
