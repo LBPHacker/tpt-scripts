@@ -23,7 +23,10 @@ that matches the .tmp value of the other. Physical adjacency is just being
 adjacent on the pixel grid. Logical adjacency is what matters when discovering
 the bounds of the pipe to be converted.
 
-.tmp values must be positive numbers. Adjust them either with the PROP tool.
+.tmp values must be positive numbers. Adjust them either with the PROP tool or
+by changing the default .tmp for SPPC upon spawning with the up and down arrow
+keys or with brush size controls while you have SPPC selected. The description
+and the colour of the element button will reflect the current default .tmp.
 
 SPPC of different .tmp are rendered with different, vibrant colours. A special
 case is .life != 0 SPPC, which is rendered with white, indicating that it acts
@@ -37,9 +40,17 @@ entire pipe into SPPC, using as few bridge particles as possible.
 
 assert(tpt.version and tpt.version.major >= 95, "version not supported")
 
-local prefix = "\bt[SPPIPE]\bw "
+local function prefix_printf(...)
+	print("\bt[SPPC]\bw " .. string.format(...))
+end
+
+local function prefix_printf_err(...)
+	print("\bl[SPPC]\bw " .. string.format(...))
+end
 
 tpt.sppipe = tpt.sppipe or {}
+pcall(event.unregister, event.keypress, tpt.sppipe.keypress)
+pcall(event.unregister, event.mousewheel, tpt.sppipe.mousewheel)
 pcall(elem.free, tpt.sppipe.SPPC)
 
 local function hsv2dcolour(h, s, v)
@@ -138,24 +149,21 @@ local function get_position(id)
 	return x, y
 end
 
-local sppc = elem.allocate("LBPHACKER", "SPPC")
+local sppc, sppc_identifier
+do
+	local group = "LBPHACKER"
+	local name = "SPPC"
+	sppc = elem.allocate(group, name)
+	sppc_identifier = group .. "_PT_" .. name
+end
 if sppc == -1 then
-	print(prefix .. "Failed to allocate SPPC: out of element IDs.")
+	prefix_printf_err("Failed to allocate SPPC: out of element IDs.")
 	return
 end
 tpt.sppipe.SPPC = sppc
 elem.element(sppc, elem.element(elem.DEFAULT_PT_DMND))
 elem.property(sppc, "Name", "SPPC")
 elem.property(sppc, "MenuSection", elem.SC_TOOL)
-
-do
-	local default_colour = spb_colour_cache[1]
-	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
-end
-elem.property(sppc, "DefaultProperties", {
-	tmp = 1,
-})
-elem.property(sppc, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for usage.")
 elem.property(sppc, "Graphics", function(i)
 	if sim.partProperty(i, "life") ~= 0 then
 		return 0, ren.PMPDE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
@@ -171,7 +179,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	local x, y = get_position(id)
 	local domain1, domain2 = get_domains(id)
 	if domain1 <= 0 then
-		print(prefix .. "Invalid domain, should be a positive number.")
+		prefix_printf_err("Invalid domain, should be a positive number.")
 		return
 	end
 	local seen = {}
@@ -207,7 +215,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			for i = 1, #candidates do
 				sim.partProperty(candidates[i].id, "dcolour", 0xFFFF0000)
 			end
-			print(prefix .. "Forked pipe, candidates marked with red dcolour.")
+			prefix_printf_err("Forked pipe, candidates marked with red dcolour.")
 			return
 		end
 		x, y, domain1, domain2 = candidates[1].x, candidates[1].y, candidates[1].domain1, candidates[1].domain2
@@ -230,6 +238,70 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	end
 end)
 
+local default_tmp
+local function set_default_tmp(new_default_tmp)
+	default_tmp = new_default_tmp
+	elem.property(sppc, "DefaultProperties", {
+		tmp = default_tmp,
+	})
+	local default_colour = spb_colour_cache[default_tmp]
+	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
+	elem.property(sppc, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for help. Default .tmp = " .. default_tmp .. ".")
+end
+set_default_tmp(1)
+
+local function sppc_selected()
+	return tpt.selectedl       == sppc_identifier or
+	       tpt.selecteda       == sppc_identifier or
+	       tpt.selectedr       == sppc_identifier or
+	       tpt.selectedreplace == sppc_identifier
+end
+
+local function decrement_default_tmp()
+	if default_tmp > 1 then
+		set_default_tmp(default_tmp - 1)
+		prefix_printf("Default .tmp set to %i.", default_tmp)
+	end
+end
+
+local function increment_default_tmp()
+	if default_tmp < 0x7FFFFFFF then
+		set_default_tmp(default_tmp + 1)
+		prefix_printf("Default .tmp set to %i.", default_tmp)
+	end
+end
+
+function tpt.sppipe.keypress(key, scan, rep, shift, ctrl, alt)
+	if sppc_selected() then
+		if (scan == 47 or scan == 81) and not shift and not ctrl and not alt then
+			if not rep then
+				decrement_default_tmp()
+			end
+			return false
+		end
+		if (scan == 48 or scan == 82) and not shift and not ctrl and not alt then
+			if not rep then
+				increment_default_tmp()
+			end
+			return false
+		end
+	end
+end
+event.register(event.keypress, tpt.sppipe.keypress)
+
+function tpt.sppipe.mousewheel(px, py, dir)
+	if sppc_selected() then
+		if dir > 0 then
+			increment_default_tmp()
+		end
+		if dir < 0 then
+			decrement_default_tmp()
+		end
+		return false
+	end
+end
+event.register(event.mousewheel, tpt.sppipe.mousewheel)
+
 local function pipe_ctypedraw(id, ctype)
 	if ctype ~= sppc then
 		return
@@ -238,7 +310,7 @@ local function pipe_ctypedraw(id, ctype)
 	local otype = sim.partProperty(id, "type")
 	if bit.band(sim.partProperty(id, "tmp"), 0x100) == 0 then
 		-- route_multi(id)
-		print(prefix .. "Not a single-pixel pipe.")
+		prefix_printf_err("Not a single-pixel pipe.")
 		return
 	end
 	local domains_seen = {}
@@ -273,10 +345,10 @@ local function pipe_ctypedraw(id, ctype)
 				for i = 1, #candidates do
 					sim.partProperty(candidates[i].id, "dcolour", 0xFFFF0000)
 				end
-				print(prefix .. "Forked pipe, candidates marked with red dcolour.")
+				prefix_printf_err("Forked pipe, candidates marked with red dcolour.")
 				return false
 			elseif parts_seen[candidates[1].id] then
-				print(prefix .. "Cyclic pipe.")
+				prefix_printf_err("Cyclic pipe.")
 				return false
 			else
 				local id = candidates[1].id
@@ -317,7 +389,7 @@ local function pipe_ctypedraw(id, ctype)
 		return
 	end
 	if broken_links then
-		print(prefix .. "Broken links encountered.")
+		prefix_printf_err("Broken links encountered.")
 	end
 	local path = {}
 	for i = #forward_path, 1, -1 do
@@ -380,10 +452,10 @@ local function pipe_ctypedraw(id, ctype)
 		last_global_domain = global_domain
 	end
 	if local_domain > 1 then
-		print(prefix .. "Process yielded multiple domains.")
+		prefix_printf("Process yielded multiple domains.")
 	end
 	if parts_lost then
-		print(prefix .. "In-pipe particles lost.")
+		prefix_printf("In-pipe particles lost.")
 	end
 end
 
