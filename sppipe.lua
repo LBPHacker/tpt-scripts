@@ -23,6 +23,8 @@ that matches the .tmp value of the other. Physical adjacency is just being
 adjacent on the pixel grid. Logical adjacency is what matters when discovering
 the bounds of the pipe to be converted.
 
+.tmp values must be positive numbers. Adjust them either with the PROP tool.
+
 SPPC of different .tmp are rendered with different, vibrant colours. A special
 case is .life != 0 SPPC, which is rendered with white, indicating that it acts
 as a bridge between SPPC domains.
@@ -64,7 +66,12 @@ local function hsv2dcolour(h, s, v)
 end
 
 local spb_colour_cache = setmetatable({}, { __index = function(tbl, key)
-	local dcolour = hsv2dcolour((0.318237 + key * 0.381763) % 1, 0.7, 1)
+	local dcolour
+	if key <= 0 then
+		dcolour = { 0x80, 0x80, 0x80 }
+	else
+		dcolour = hsv2dcolour((0.318237 + key * 0.381763) % 1, 0.7, 1)
+	end
 	tbl[key] = dcolour
 	return dcolour
 end })
@@ -163,6 +170,10 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	end
 	local x, y = get_position(id)
 	local domain1, domain2 = get_domains(id)
+	if domain1 <= 0 then
+		print(prefix .. "Invalid domain, should be a positive number.")
+		return
+	end
 	local seen = {}
 	local path = {}
 	local function push(item)
@@ -196,7 +207,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			for i = 1, #candidates do
 				sim.partProperty(candidates[i].id, "dcolour", 0xFFFF0000)
 			end
-			print(prefix .. "Forked pipe, candidates marked.")
+			print(prefix .. "Forked pipe, candidates marked with red dcolour.")
 			return
 		end
 		x, y, domain1, domain2 = candidates[1].x, candidates[1].y, candidates[1].domain1, candidates[1].domain2
@@ -205,7 +216,6 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 	for i = 1, #path do
 		local id, x, y = path[i].id, path[i].x, path[i].y
 		sim.partProperty(id, "type", path[i].ptype)
-		-- print(path[i].ptype, sim.partProperty(id, "type"))
 		local tmp = bit.bor(0x100, bit.lshift(i % 3 + 1, 18))
 		if i ~= 1 then
 			tmp = bit.bor(tmp, bit.lshift(get_dir(path[i], path[i - 1]), 14), 0x2000)
@@ -263,7 +273,7 @@ local function pipe_ctypedraw(id, ctype)
 				for i = 1, #candidates do
 					sim.partProperty(candidates[i].id, "dcolour", 0xFFFF0000)
 				end
-				print(prefix .. "Forked pipe, candidates marked.")
+				print(prefix .. "Forked pipe, candidates marked with red dcolour.")
 				return false
 			elseif parts_seen[candidates[1].id] then
 				print(prefix .. "Cyclic pipe.")
