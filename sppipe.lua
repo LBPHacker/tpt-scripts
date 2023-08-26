@@ -24,9 +24,9 @@ adjacent on the pixel grid. Logical adjacency is what matters when discovering
 the bounds of the pipe to be converted.
 
 .tmp values must be positive numbers. Adjust them either with the PROP tool or
-by changing the default .tmp for SPPC upon spawning with the up and down arrow
-keys or with brush size controls while you have SPPC selected. The description
-and the colour of the element button will reflect the current default .tmp.
+by changing the default .tmp for SPPC upon spawning with brush size controls or
+the number keys while you have SPPC selected. The description and the colour of
+the element button will reflect the current default .tmp.
 
 SPPC of different .tmp are rendered with different, vibrant colours. A special
 case is .life != 0 SPPC, which is rendered with white, indicating that it acts
@@ -50,6 +50,7 @@ end
 
 tpt.sppipe = tpt.sppipe or {}
 pcall(event.unregister, event.keypress, tpt.sppipe.keypress)
+pcall(event.unregister, event.keyrelease, tpt.sppipe.keyrelease)
 pcall(event.unregister, event.mousewheel, tpt.sppipe.mousewheel)
 pcall(elem.free, tpt.sppipe.SPPC)
 
@@ -239,7 +240,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 end)
 
 local default_tmp
-local function set_default_tmp(new_default_tmp)
+local function set_default_tmp(new_default_tmp, quiet)
 	default_tmp = new_default_tmp
 	elem.property(sppc, "DefaultProperties", {
 		tmp = default_tmp,
@@ -247,41 +248,55 @@ local function set_default_tmp(new_default_tmp)
 	local default_colour = spb_colour_cache[default_tmp]
 	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
 	elem.property(sppc, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for help. Default .tmp = " .. default_tmp .. ".")
+	if not quiet then
+		prefix_printf("Default .tmp set to %i.", default_tmp)
+	end
 end
-set_default_tmp(1)
+set_default_tmp(1, true)
 
-local function sppc_selected()
-	return tpt.selectedl       == sppc_identifier or
-	       tpt.selecteda       == sppc_identifier or
-	       tpt.selectedr       == sppc_identifier or
-	       tpt.selectedreplace == sppc_identifier
+local z_down = false
+
+local function enable_shortcuts()
+	return (tpt.selectedl       == sppc_identifier or
+	        tpt.selecteda       == sppc_identifier or
+	        tpt.selectedr       == sppc_identifier or
+	        tpt.selectedreplace == sppc_identifier) and not z_down
 end
 
 local function decrement_default_tmp()
 	if default_tmp > 1 then
 		set_default_tmp(default_tmp - 1)
-		prefix_printf("Default .tmp set to %i.", default_tmp)
 	end
 end
 
 local function increment_default_tmp()
 	if default_tmp < 0x7FFFFFFF then
 		set_default_tmp(default_tmp + 1)
-		prefix_printf("Default .tmp set to %i.", default_tmp)
 	end
 end
 
 function tpt.sppipe.keypress(key, scan, rep, shift, ctrl, alt)
-	if sppc_selected() then
-		if (scan == 47 or scan == 81) and not shift and not ctrl and not alt then
+	if scan == 29 then -- more strict than necessary but it doesn't matter
+		z_down = true
+	end
+	if enable_shortcuts() then
+		if scan == 47 and not shift and not ctrl and not alt then
 			if not rep then
 				decrement_default_tmp()
 			end
 			return false
 		end
-		if (scan == 48 or scan == 82) and not shift and not ctrl and not alt then
+		if scan == 48 and not shift and not ctrl and not alt then
 			if not rep then
 				increment_default_tmp()
+			end
+			return false
+		end
+		if not shift and not ctrl and not alt and key >= 48 and key <= 57 then
+			if key == 48 then
+				set_default_tmp(10)
+			else
+				set_default_tmp(key - 48)
 			end
 			return false
 		end
@@ -289,8 +304,15 @@ function tpt.sppipe.keypress(key, scan, rep, shift, ctrl, alt)
 end
 event.register(event.keypress, tpt.sppipe.keypress)
 
+function tpt.sppipe.keyrelease(key, scan, rep, shift, ctrl, alt)
+	if scan == 29 then
+		z_down = false
+	end
+end
+event.register(event.keyrelease, tpt.sppipe.keyrelease)
+
 function tpt.sppipe.mousewheel(px, py, dir)
-	if sppc_selected() then
+	if enable_shortcuts() then
 		if dir > 0 then
 			increment_default_tmp()
 		end
