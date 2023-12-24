@@ -26,7 +26,8 @@ the bounds of the pipe to be converted.
 .tmp values must be positive numbers. Adjust them either with the PROP tool or
 by changing the default .tmp for SPPC upon spawning with brush size controls or
 the number keys while you have SPPC selected. The description and the colour of
-the element button will reflect the current default .tmp.
+the element button will reflect the current default .tmp. It's also possible to
+sample the .tmp of SPPC with the sample tool.
 
 SPPC of different .tmp are rendered with different, vibrant colours. A special
 case is .life != 0 SPPC, which is rendered with white, indicating that it acts
@@ -52,6 +53,7 @@ tpt.sppipe = tpt.sppipe or {}
 pcall(event.unregister, event.keypress, tpt.sppipe.keypress)
 pcall(event.unregister, event.keyrelease, tpt.sppipe.keyrelease)
 pcall(event.unregister, event.mousewheel, tpt.sppipe.mousewheel)
+pcall(event.unregister, event.mousedown, tpt.sppipe.mousedown)
 pcall(elem.free, tpt.sppipe.SPPC)
 
 local function hsv2dcolour(h, s, v)
@@ -255,12 +257,19 @@ end
 set_default_tmp(1, true)
 
 local z_down = false
+local alt_down = false
+
+local button_to_slot = {
+	[ ui.SDL_BUTTON_LEFT   ] = "selectedl",
+	[ ui.SDL_BUTTON_MIDDLE ] = "selecteda",
+	[ ui.SDL_BUTTON_RIGHT  ] = "selectedr",
+}
 
 local function enable_shortcuts()
 	return (tpt.selectedl       == sppc_identifier or
 	        tpt.selecteda       == sppc_identifier or
 	        tpt.selectedr       == sppc_identifier or
-	        tpt.selectedreplace == sppc_identifier) and not z_down
+	        tpt.selectedreplace == sppc_identifier) and not z_down and not alt_down
 end
 
 local function decrement_default_tmp()
@@ -279,6 +288,7 @@ function tpt.sppipe.keypress(key, scan, rep, shift, ctrl, alt)
 	if scan == 29 then -- more strict than necessary but it doesn't matter
 		z_down = true
 	end
+	alt_down = alt
 	if enable_shortcuts() then
 		if scan == 47 and not shift and not ctrl and not alt then
 			if not rep then
@@ -308,6 +318,7 @@ function tpt.sppipe.keyrelease(key, scan, rep, shift, ctrl, alt)
 	if scan == 29 then
 		z_down = false
 	end
+	alt_down = alt
 end
 event.register(event.keyrelease, tpt.sppipe.keyrelease)
 
@@ -323,6 +334,18 @@ function tpt.sppipe.mousewheel(px, py, dir)
 	end
 end
 event.register(event.mousewheel, tpt.sppipe.mousewheel)
+
+function tpt.sppipe.mousedown(px, py, button)
+	local px, py = sim.adjustCoords(px, py)
+	local slot = button_to_slot[button]
+	if slot and tpt[slot] == "DEFAULT_UI_SAMPLE" then
+		local id = sim.partID(px, py)
+		if id and sim.partProperty(id, "type") == sppc then
+			set_default_tmp(sim.partProperty(id, "tmp"))
+		end
+	end
+end
+event.register(event.mousedown, tpt.sppipe.mousedown)
 
 local function pipe_ctypedraw(id, ctype)
 	if ctype ~= sppc then
