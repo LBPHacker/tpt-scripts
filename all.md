@@ -261,8 +261,15 @@ use, but who knows, they might be useful to others:
  - `set_1:get(property)` tells you the value of the `property` property of each
    particle in the set if all of them have the same value for that property,
    otherwise it says that they don't and returns `false`,
+ - `set_1:get_bbox(eyeball_xy)` returns the bounding box of the set as four
+   variables: `left, top, right, bottom`, its eyeball_xy again controls whether it
+   returning HUD-like integer coordinates,
  - `set_1:average(property)` is the same as get except it returns the average if
    there are multiple particles in the set (so it never returns `false`),
+ - `set_1:rotate(angle, xcenter, ycenter)` rotates the set by `angle` degrees in
+   the clockwise direction around the point specified with `xcenter` and `ycenter`,
+   both of which are optional and default to the center of the bounding box
+   (as per `set_1:get_bbox`) along the appropriate dimension,
  - and `set_1:iterate()` can be used as an iterator in a Lua for loop:
 
 ```lua

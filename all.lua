@@ -10,6 +10,10 @@ for _, name in pairs({ "x", "y", "vx", "vx", "temp" }) do
 end
 local default_epsilon = 1e-3
 
+local function round(a)
+    return math.floor(a + 0.5)
+end
+
 local element_name_cache = {}
 local function rebuild_element_name_cache()
     element_name_cache = {}
@@ -242,7 +246,7 @@ function particle_set_i:eq(property_key, property_value, eyeball_xy, epsilon)
         epsilon = epsilon or default_epsilon
         if eyeball_xy and xy_properties[property_key] then
             return self:filter(function(proxy)
-                return math.floor(proxy[property_key] + 0.5) == property_value
+                return round(proxy[property_key]) == property_value
             end)
         else
             return self:filter(function(proxy)
@@ -262,7 +266,7 @@ function particle_set_i:neq(property_key, property_value, eyeball_xy, epsilon)
         epsilon = epsilon or default_epsilon
         if eyeball_xy and xy_properties[property_key] then
             return self:filter(function(proxy)
-                return math.floor(proxy[property_key] + 0.5) ~= property_value
+                return round(proxy[property_key]) ~= property_value
             end)
         else
             return self:filter(function(proxy)
@@ -280,7 +284,7 @@ function particle_set_i:gt(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
     if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return math.floor(proxy[property_key] + 0.5) > property_value
+            return round(proxy[property_key]) > property_value
         end)
     else
         return self:filter(function(proxy)
@@ -293,7 +297,7 @@ function particle_set_i:gte(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
     if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return math.floor(proxy[property_key] + 0.5) >= property_value
+            return round(proxy[property_key]) >= property_value
         end)
     else
         return self:filter(function(proxy)
@@ -306,7 +310,7 @@ function particle_set_i:lt(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
     if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return math.floor(proxy[property_key] + 0.5) < property_value
+            return round(proxy[property_key]) < property_value
         end)
     else
         return self:filter(function(proxy)
@@ -319,7 +323,7 @@ function particle_set_i:lte(property_key, property_value, eyeball_xy)
     property_value = prop_value(property_value)
     if eyeball_xy and xy_properties[property_key] then
         return self:filter(function(proxy)
-            return math.floor(proxy[property_key] + 0.5) <= property_value
+            return round(proxy[property_key]) <= property_value
         end)
     else
         return self:filter(function(proxy)
@@ -405,6 +409,58 @@ function particle_set_i:randomise(property_key, property_values)
     return self
 end
 
+function particle_set_i:rotate(angle, xcenter, ycenter)
+    angle = (angle + 180) % 360 - 180
+    local x1, y1, x2, y2 = self:get_bbox(true)
+    if not xcenter then
+        xcenter = round((x1 + x2) / 2)
+    end
+    if not ycenter then
+        ycenter = round((y1 + y2) / 2)
+    end
+    local do180 = false
+    if angle < -90 then
+        angle = angle + 180
+        do180 = true
+    elseif angle > 90 then
+        angle = angle - 180
+        do180 = true
+    end
+    local pos = {}
+    for id, proxy in self:iterate() do
+        pos[id] = {
+            x = round(proxy.x),
+            y = round(proxy.y),
+        }
+    end
+    local function shear(xf, yf)
+        for id, item in pairs(pos) do
+            local x = round(item.x)
+            local y = round(item.y)
+            local nx = x + round(xf * (y - ycenter))
+            local ny = y + round(yf * (x - xcenter))
+            if do180 then
+                nx = 2 * xcenter - nx
+                ny = 2 * ycenter - ny
+            end
+            item.x = nx
+            item.y = ny
+        end
+    end
+    local rangle = math.rad(angle)
+    local xf = -math.tan(rangle / 2)
+    local yf = math.sin(rangle)
+    shear(xf,  0, do180)
+    shear( 0, yf, false)
+    shear(xf,  0, false)
+    for id, proxy in self:iterate() do
+        proxy.x = pos[id].x
+        if sim.partExists(id) then
+            proxy.y = pos[id].y
+        end
+    end
+end
+
 local field_type = sim.FIELD_TYPE
 local field_x = sim.FIELD_X
 local field_y = sim.FIELD_Y
@@ -420,8 +476,8 @@ function particle_set_i:reorder()
     for _, proxy in self:iterate() do
         local part = {
             proxy = proxy,
-            x = math.floor(proxy.x + 0.5),
-            y = math.floor(proxy.y + 0.5),
+            x = round(proxy.x),
+            y = round(proxy.y),
         }
         for field in pairs(fields) do
             part[field] = proxy[field]
@@ -466,6 +522,25 @@ function particle_set_i:get(property_key)
         end
     end
     return not multiple_values and result
+end
+
+function particle_set_i:get_bbox(eyeball_xy)
+    local x1 = math.huge
+    local y1 = math.huge
+    local x2 = -math.huge
+    local y2 = -math.huge
+    for id, proxy in self:iterate() do
+        local x, y = proxy.x, proxy.y
+        if eyeball_xy then
+            x = round(x)
+            y = round(y)
+        end
+        x1 = math.min(x1, x)
+        y1 = math.min(y1, y)
+        x2 = math.max(x2, x)
+        y2 = math.max(y2, y)
+    end
+    return x1, y1, x2 + 1, y2 + 1
 end
 
 function particle_set_i:average(property_key)
