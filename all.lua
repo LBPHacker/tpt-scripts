@@ -411,12 +411,14 @@ end
 
 function particle_set_i:rotate(angle, xcenter, ycenter)
     angle = (angle + 180) % 360 - 180
-    local x1, y1, x2, y2 = self:get_bbox(true)
-    if not xcenter then
-        xcenter = round((x1 + x2) / 2)
-    end
-    if not ycenter then
-        ycenter = round((y1 + y2) / 2)
+    do
+        local x1, y1, x2, y2 = self:get_bbox(true)
+        if not xcenter then
+            xcenter = round((x1 + x2) / 2)
+        end
+        if not ycenter then
+            ycenter = round((y1 + y2) / 2)
+        end
     end
     local do180 = false
     if angle < -90 then
@@ -426,37 +428,22 @@ function particle_set_i:rotate(angle, xcenter, ycenter)
         angle = angle - 180
         do180 = true
     end
-    local pos = {}
-    for id, proxy in self:iterate() do
-        pos[id] = {
-            x = round(proxy.x),
-            y = round(proxy.y),
-        }
-    end
-    local function shear(xf, yf)
-        for id, item in pairs(pos) do
-            local x = round(item.x)
-            local y = round(item.y)
-            local nx = x + round(xf * (y - ycenter))
-            local ny = y + round(yf * (x - xcenter))
-            if do180 then
-                nx = 2 * xcenter - nx
-                ny = 2 * ycenter - ny
-            end
-            item.x = nx
-            item.y = ny
-        end
-    end
     local rangle = math.rad(angle)
     local xf = -math.tan(rangle / 2)
     local yf = math.sin(rangle)
-    shear(xf,  0, do180)
-    shear( 0, yf, false)
-    shear(xf,  0, false)
     for id, proxy in self:iterate() do
-        proxy.x = pos[id].x
+        local x0 = round(proxy.x)
+        local y0 = round(proxy.y)
+        if do180 then
+            x0 = 2 * xcenter - x0
+            y0 = 2 * ycenter - y0
+        end
+        local x1 = x0 + round(xf * (y0 - ycenter))
+        local y1 = y0 + round(yf * (x1 - xcenter))
+        local x2 = x1 + round(xf * (y1 - ycenter))
+        proxy.x = x2
         if sim.partExists(id) then
-            proxy.y = pos[id].y
+            proxy.y = y1
         end
     end
 end
