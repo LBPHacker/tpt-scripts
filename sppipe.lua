@@ -1,4 +1,4 @@
-assert(tpt.version and tpt.version.major >= 95, "version not supported")
+assert(tpt.version and ((tpt.version.upstreamMajor and tpt.version.upstreamMajor >= 95) or tpt.version.major >= 95), "version not supported")
 
 local function prefix_printf(...)
 	print("\bt[SPPC]\bw " .. string.format(...))
