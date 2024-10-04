@@ -128,11 +128,11 @@ elem.property(sppc, "Name", "SPPC")
 elem.property(sppc, "MenuSection", elem.SC_TOOL)
 elem.property(sppc, "Graphics", function(i)
 	if sim.partProperty(i, "life") ~= 0 then
-		return 0, ren.PMPDE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
+		return 0, ren.PMODE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
 	end
 	local domain = sim.partProperty(i, "tmp")
 	local rgb = spb_colour_cache[domain]
-	return 0, ren.PMPDE_FLAT, 0xFF, rgb[1], rgb[2], rgb[3], 0x00, 0x00, 0x00, 0x00
+	return 0, ren.PMODE_FLAT, 0xFF, rgb[1], rgb[2], rgb[3], 0x00, 0x00, 0x00, 0x00
 end)
 elem.property(sppc, "CtypeDraw", function(id, ctype)
 	if not pipe_types[ctype] then
