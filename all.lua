@@ -9,6 +9,7 @@ for _, name in pairs({ "x", "y", "vx", "vx", "temp" }) do
     float_properties[sim["FIELD_" .. name:upper()]] = true
 end
 local default_epsilon = 1e-3
+local record_err_max = 10
 
 local function round(a)
     return math.floor(a + 0.5)
@@ -676,7 +677,16 @@ function make_particle_set()
     }, particle_set_m)
 end
 
-tpt.all = setmetatable({}, { __call = function(self, param, param2)
+pcall(function()
+    tools.free(tpt.all.tools.magicwand)
+    tools.free(tpt.all.tools.exectool)
+    event.unregister(event.TICK, tpt.all.events.tick)
+end)
+
+tpt.all = setmetatable({
+    tools = {},
+    events = {},
+}, { __call = function(self, param, param2)
     if type(param2) == "number" and type(param) == "number" then
         return tpt.all.at(param, param2)
     end
@@ -697,6 +707,103 @@ tpt.all = setmetatable({}, { __call = function(self, param, param2)
     end
     return all_particles
 end })
+
+if tpt.version.upstreamBuild >= 374 then -- tools API, Select callback
+    local record_err_log = {}
+    local record_err_size = 0
+    local function record_err(err)
+        record_err_size = record_err_size + 1
+        if record_err_size <= record_err_max then
+            table.insert(record_err_log, err)
+        end
+    end
+
+    local exectool_code = [[sim.partProperty(i, "dcolour", 0xFFFF0000)]]
+    local exectool_err, exectool_func
+    local magicwand_code = [[self:set("dcolour", 0xFFFF0000)]]
+    local magicwand_err, magicwand_func, magicwand_queued
+    function tpt.all.events.tick()
+        if magicwand_queued then
+            local print_err = magicwand_err
+            if magicwand_func then
+                local matching = make_particle_set()
+                for id in sim.parts() do
+                    local x = round(sim.partProperty(id, "x"))
+                    local y = round(sim.partProperty(id, "y"))
+                    if magicwand_queued[y * sim.XRES + x] then
+                        matching:insert(id)
+                    end
+                end
+                local ok, err = pcall(magicwand_func, matching)
+                if not ok then
+                    print_err = err
+                end
+            end
+            if print_err then
+                record_err(print_err)
+            end
+            magicwand_queued = nil
+        end
+        if #record_err_log > 0 then
+            for i = 1, #record_err_log do
+                print("\bt[tpt.all]\bw: " .. record_err_log[i])
+            end
+            local remaining = record_err_size - record_err_max
+            if remaining > 0 then
+                print("\bt[tpt.all]\bw: (and " .. remaining .. " more errors)")
+            end
+            record_err_log = {}
+            record_err_size = 0
+        end
+    end
+    event.register(event.TICK, tpt.all.events.tick)
+
+    tpt.all.magicwand = tools.allocate("TPTALL", "MAGICWAND")
+    tools.property(tpt.all.magicwand, "Perform", function(_, x, y)
+        if not magicwand_queued then
+            magicwand_queued = {}
+        end
+        magicwand_queued[y * sim.XRES + x] = true
+    end)
+    tools.property(tpt.all.magicwand, "Select", function()
+        ui.beginInput("tpt.all Magic Wand", [[Enter code to execute (the local variable "self" refers to the set of particles drawn over):]], magicwand_code, function(code)
+            if code then
+                magicwand_code = code
+                magicwand_func, magicwand_err = load("local self = ...; " .. code, "=[magic wand code]", "t")
+            end
+        end)
+    end)
+    tools.property(tpt.all.magicwand, "Name", "TAMW")
+    tools.property(tpt.all.magicwand, "Description", "tpt.all Magic Wand: select to enter code, draw to execute it on the tpt.all set of particles drawn over.")
+    tools.property(tpt.all.magicwand, "Color", 0x80B030)
+
+    tpt.all.exectool = tools.allocate("TPTALL", "EXECTOOL")
+    tools.property(tpt.all.exectool, "Perform", function(i, x, y)
+        if i then
+            local print_err = exectool_err
+            if exectool_func then
+                local ok, err = pcall(exectool_func, i)
+                if not ok then
+                    print_err = err
+                end
+            end
+            if print_err then
+                record_err(print_err)
+            end
+        end
+    end)
+    tools.property(tpt.all.exectool, "Select", function()
+        ui.beginInput("tpt.all Exec Tool", [[Enter code to execute (the local variable "i" refers to particle drawn over):]], exectool_code, function(code)
+            if code then
+                exectool_code = code
+                exectool_func, exectool_err = load("local i = ...; " .. code, "=[exec tool code]", "t")
+            end
+        end)
+    end)
+    tools.property(tpt.all.exectool, "Name", "TAEX")
+    tools.property(tpt.all.exectool, "Description", "tpt.all Exec Tool: select to enter code, draw to execute it on particles drawn over.")
+    tools.property(tpt.all.exectool, "Color", 0x00B090)
+end
 
 function tpt.all.at(x, y)
     local id = sim.partID(x, y)
