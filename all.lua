@@ -794,7 +794,7 @@ if tpt.version.upstreamBuild >= 374 then -- tools API, Select callback
         magicwand_queued[y * sim.XRES + x] = true
     end)
     tools.property(tpt.all.magicwand, "Select", function()
-        ui.beginInput("tpt.all Magic Wand", [[Enter code to execute (the local variable "self" refers to the set of particles drawn over):]], magicwand_code, function(code)
+        ui.beginInput("tpt.all Magic Wand", "Enter code to execute. The local variable \"self\" refers to the set of particles drawn over.\n\brWARNING: do not paste code here unless you know what you are doing.", magicwand_code, function(code)
             if code then
                 magicwand_code = code
                 magicwand_func, magicwand_err = load("local self = ...; " .. code, "=[magic wand code]", "t")
@@ -821,7 +821,7 @@ if tpt.version.upstreamBuild >= 374 then -- tools API, Select callback
         end
     end)
     tools.property(tpt.all.exectool, "Select", function()
-        ui.beginInput("tpt.all Exec Tool", [[Enter code to execute (the local variable "i" refers to particle drawn over):]], exectool_code, function(code)
+        ui.beginInput("tpt.all Exec Tool", "Enter code to execute. The local variable \"i\" refers to particle drawn over.\n\brWARNING: do not paste code here unless you know what you are doing.", exectool_code, function(code)
             if code then
                 exectool_code = code
                 exectool_func, exectool_err = load("local i = ...; " .. code, "=[exec tool code]", "t")
