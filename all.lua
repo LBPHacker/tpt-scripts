@@ -396,11 +396,12 @@ end
 
 function particle_set_i:randomise(property_key, property_values)
     local pv_size = #property_values
+    local property_values_copy = {}
     for ix = 1, pv_size do
-        property_values[ix] = prop_value_func(property_values[ix])
+        property_values_copy[ix] = prop_value_func(property_values[ix])
     end
     for id, proxy in self:iterate() do
-        local property_value = property_values[math.random(1, pv_size)]
+        local property_value = property_values_copy[math.random(1, pv_size)]
         if type(property_value) == "function" then
             proxy[property_key] = property_value(proxy)
         else
@@ -409,6 +410,33 @@ function particle_set_i:randomise(property_key, property_values)
     end
     return self
 end
+particle_set_i.randomize = particle_set_i.randomise
+
+function particle_set_i:randomise_weighted(property_key, property_values)
+    local property_values_copy = {}
+    local prob_acc = 0
+    for property_value, prob in pairs(property_values) do
+        table.insert(property_values_copy, { value = prop_value_func(property_value), prob_acc = prob_acc })
+        prob_acc = prob_acc + prob
+    end
+    for id, proxy in self:iterate() do
+        local rand = math.random() * prob_acc
+        local property_value
+        for i = #property_values_copy, 1, -1 do
+            if property_values_copy[i].prob_acc <= rand then
+                property_value = property_values_copy[i].value
+                break
+            end
+        end
+        if type(property_value) == "function" then
+            proxy[property_key] = property_value(proxy)
+        else
+            proxy[property_key] = property_value
+        end
+    end
+    return self
+end
+particle_set_i.randomize_weighted = particle_set_i.randomise_weighted
 
 function particle_set_i:rotate(angle, xcenter, ycenter)
     angle = (angle + 180) % 360 - 180
@@ -678,8 +706,8 @@ function make_particle_set()
 end
 
 pcall(function()
-    tools.free(tpt.all.tools.magicwand)
-    tools.free(tpt.all.tools.exectool)
+    tools.free(tpt.all.magicwand)
+    tools.free(tpt.all.exectool)
     event.unregister(event.TICK, tpt.all.events.tick)
 end)
 
@@ -837,25 +865,10 @@ function tpt.all.array(id_array)
 end
 
 function tpt.all.buffer(func, ...)
-    local all_particles
-    local sim_partCreate_original = sim.partCreate
-    local ok, err = pcall(function(...)
-        local id_buffer = {}
-        sim.partCreate = function(...)
-            local id = sim_partCreate_original(...)
-            if id then
-                id_buffer[id] = true
-            end
-            return id
-        end
-        func(...)
-        all_particles = tpt.all.assoc(id_buffer)
-    end, ...)
-    sim.partCreate = sim_partCreate_original
-    if not ok then
-        error(err)
-    end
-    return all_particles
+    local before = tpt.all()
+    func(...)
+    local after = tpt.all()
+    return after - before
 end
 
 function tpt.all.assoc(id_assoc)
