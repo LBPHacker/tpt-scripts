@@ -1,0 +1,11 @@
+tpt.SSNG = tpt.SSNG or {}
+pcall(elem.free, tpt.SSNG.elem)
+tpt.SSNG.elem = elem.allocate("lbphacker", "singsnow")
+elem.element(tpt.SSNG.elem, elem.element(elem.DEFAULT_PT_SNOW))
+elem.property(tpt.SSNG.elem, "Name", "SSNG")
+elem.property(tpt.SSNG.elem, "Description", "SNOWified SING. Makes nice explosions instead of melting.")
+elem.property(tpt.SSNG.elem, "Graphics", function(i)
+	sim.partChangeType(i, elem.DEFAULT_PT_SNOW)
+	sim.partProperty(i, "ctype", elem.DEFAULT_PT_SING)
+	sim.partProperty(i, "tmp", 5000)
+end)
