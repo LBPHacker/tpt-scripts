@@ -13,7 +13,8 @@ pcall(event.unregister, event.keypress, tpt.sppipe.keypress)
 pcall(event.unregister, event.keyrelease, tpt.sppipe.keyrelease)
 pcall(event.unregister, event.mousewheel, tpt.sppipe.mousewheel)
 pcall(event.unregister, event.mousedown, tpt.sppipe.mousedown)
-pcall(elem.free, tpt.sppipe.SPPC)
+pcall(elem.free, tpt.sppipe.SPPT)
+pcall(tools.free, tpt.sppipe.SPPC)
 
 local function hsv2dcolour(h, s, v)
 	local sector = math.floor(h * 6)
@@ -111,22 +112,22 @@ local function get_position(id)
 	return x, y
 end
 
-local sppc, sppc_identifier
+local sppt, sppt_identifier
+local group = "LBPHACKER"
 do
-	local group = "LBPHACKER"
-	local name = "SPPC"
-	sppc = elem.allocate(group, name)
-	sppc_identifier = group .. "_PT_" .. name
+	local name = "SPPT"
+	sppt = elem.allocate(group, name)
+	sppt_identifier = group .. "_PT_" .. name
 end
-if sppc == -1 then
-	prefix_printf_err("Failed to allocate SPPC: out of element IDs.")
+if sppt == -1 then
+	prefix_printf_err("Failed to allocate SPPT: out of element IDs.")
 	return
 end
-tpt.sppipe.SPPC = sppc
-elem.element(sppc, elem.element(elem.DEFAULT_PT_DMND))
-elem.property(sppc, "Name", "SPPC")
-elem.property(sppc, "MenuSection", elem.SC_TOOL)
-elem.property(sppc, "Graphics", function(i)
+tpt.sppipe.SPPT = sppt
+elem.element(sppt, elem.element(elem.DEFAULT_PT_DMND))
+elem.property(sppt, "Name", "SPPT")
+elem.property(sppt, "MenuSection", elem.SC_TOOL)
+elem.property(sppt, "Graphics", function(i)
 	if sim.partProperty(i, "life") ~= 0 then
 		return 0, ren.PMODE_FLAT, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
 	end
@@ -134,8 +135,20 @@ elem.property(sppc, "Graphics", function(i)
 	local rgb = spb_colour_cache[domain]
 	return 0, ren.PMODE_FLAT, 0xFF, rgb[1], rgb[2], rgb[3], 0x00, 0x00, 0x00, 0x00
 end)
-elem.property(sppc, "CtypeDraw", function(id, ctype)
+elem.property(sppt, "CtypeDraw", function(id, ctype)
 	if not pipe_types[ctype] then
+		return
+	end
+	sim.partProperty(id, "ctype", ctype)
+end)
+
+local function to_pipe(id, ctype_override)
+	local ctype = ctype_override or sim.partProperty(id, "ctype")
+	if ctype == 0 then
+		ctype = elem.DEFAULT_PT_PIPE
+	end
+	if not pipe_types[ctype] then
+		prefix_printf_err("Target type is not a pipe type.")
 		return
 	end
 	local x, y = get_position(id)
@@ -157,7 +170,7 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 			local xx = x + xoff
 			local yy = y + yoff
 			local r = sim.partID(xx, yy)
-			if r and not seen[r] and sim.partProperty(r, "type") == sppc then
+			if r and not seen[r] and sim.partProperty(r, "type") == sppt then
 				local r_domain1, r_domain2 = get_domains(r)
 				if domain1 == r_domain1
 				or domain1 == r_domain2
@@ -198,17 +211,18 @@ elem.property(sppc, "CtypeDraw", function(id, ctype)
 		sim.partProperty(id, "life", 0)
 		sim.partProperty(id, "dcolour", 0)
 	end
-end)
+end
 
 local default_tmp
 local function set_default_tmp(new_default_tmp, quiet)
 	default_tmp = new_default_tmp
-	elem.property(sppc, "DefaultProperties", {
-		tmp = default_tmp,
+	elem.property(sppt, "DefaultProperties", {
+		ctype = elem.DEFAULT_PT_PIPE,
+		tmp   = default_tmp,
 	})
 	local default_colour = spb_colour_cache[default_tmp]
-	elem.property(sppc, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
-	elem.property(sppc, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for help. Default .tmp = " .. default_tmp .. ".")
+	elem.property(sppt, "Color", default_colour[1] * 0x10000 + default_colour[2] * 0x100 + default_colour[3])
+	elem.property(sppt, "Description", "Single-pixel pipe template. See the big comment at the top of the script for help. Default .tmp = " .. default_tmp .. ".")
 	if not quiet then
 		prefix_printf("Default .tmp set to %i.", default_tmp)
 	end
@@ -225,10 +239,10 @@ local button_to_slot = {
 }
 
 local function enable_shortcuts()
-	return (tpt.selectedl       == sppc_identifier or
-	        tpt.selecteda       == sppc_identifier or
-	        tpt.selectedr       == sppc_identifier or
-	        tpt.selectedreplace == sppc_identifier) and not z_down and not alt_down
+	return (tpt.selectedl       == sppt_identifier or
+	        tpt.selecteda       == sppt_identifier or
+	        tpt.selectedr       == sppt_identifier or
+	        tpt.selectedreplace == sppt_identifier) and not z_down and not alt_down
 end
 
 local function decrement_default_tmp()
@@ -299,17 +313,14 @@ function tpt.sppipe.mousedown(px, py, button)
 	local slot = button_to_slot[button]
 	if slot and tpt[slot] == "DEFAULT_UI_SAMPLE" then
 		local id = sim.partID(px, py)
-		if id and sim.partProperty(id, "type") == sppc then
+		if id and sim.partProperty(id, "type") == sppt then
 			set_default_tmp(sim.partProperty(id, "tmp"))
 		end
 	end
 end
 event.register(event.mousedown, tpt.sppipe.mousedown)
 
-local function pipe_ctypedraw(id, ctype)
-	if ctype ~= sppc then
-		return
-	end
+local function from_pipe(id)
 	local x, y = get_position(id)
 	local otype = sim.partProperty(id, "type")
 	if bit.band(sim.partProperty(id, "tmp"), 0x100) == 0 then
@@ -325,7 +336,7 @@ local function pipe_ctypedraw(id, ctype)
 			local xx = torigin.x + xoff
 			local yy = torigin.y + yoff
 			local r = sim.partID(xx, yy)
-			if r and sim.partProperty(r, "type") == sppc and r ~= id then
+			if r and sim.partProperty(r, "type") == sppt and r ~= id then
 				local domain = sim.partProperty(r, "tmp")
 				domains_seen[domain] = true
 			end
@@ -444,7 +455,7 @@ local function pipe_ctypedraw(id, ctype)
 		if sim.partProperty(path[i].id, "ctype") ~= 0 then
 			parts_lost = true
 		end
-		sim.partProperty(path[i].id, "type", sppc)
+		sim.partProperty(path[i].id, "type", sppt)
 		sim.partProperty(path[i].id, "dcolour", 0)
 		sim.partProperty(path[i].id, "tmp", global_domain)
 		sim.partProperty(path[i].id, "ctype", path[i].ptype)
@@ -463,6 +474,21 @@ local function pipe_ctypedraw(id, ctype)
 	end
 end
 
-for ptype in pairs(pipe_types) do
-	elem.property(ptype, "CtypeDraw", pipe_ctypedraw)
-end
+tpt.sppipe.SPPC = tools.allocate(group, "sppc")
+tools.property(tpt.sppipe.SPPC, "Name", "SPPC")
+tools.property(tpt.sppipe.SPPC, "Description", "Single-pixel pipe configurator. See the big comment at the top of the script for help.")
+tools.property(tpt.sppipe.SPPC, "Color", 0x808080)
+tools.property(tpt.sppipe.SPPC, "Click", function(brush, x, y, strength, shift, ctrl, alt)
+	local i = sim.partID(x, y)
+	if i then
+		if sim.partProperty(i, "type") == sppt then
+			local ctype_override = elem[ui.activeTool(3)]
+			if ctype_override == 0 then
+				ctype_override = nil
+			end
+			to_pipe(i, ctype_override)
+		elseif pipe_types[sim.partProperty(i, "type")] then
+			from_pipe(i)
+		end
+	end
+end)
