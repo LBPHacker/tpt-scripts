@@ -74,7 +74,7 @@ end
 event.register(event.mousedown, tpt.SPWR.mousedown)
 event.register(event.mouseup, tpt.SPWR.mouseup)
 
-local function funcGraphics(i)
+local function configure(i)
 	if not button1_state then
 		sim.partKill(i)
 		return
@@ -107,8 +107,32 @@ local function funcGraphics(i)
 end
 
 pcall(elem.free, tpt.SPWR.elem)
-tpt.SPWR.elem = elem.allocate("lbphacker", "soapworm")
-elem.element(tpt.SPWR.elem, elem.element(elem.DEFAULT_PT_SOAP))
-elem.property(tpt.SPWR.elem, "Name", "SPWR")
-elem.property(tpt.SPWR.elem, "Description", "\"Soapworm\". Creates a continuous line of SOAP.")
-elem.property(tpt.SPWR.elem, "Graphics", funcGraphics)
+if tools then
+	pcall(tools.free, tpt.SPWR.tool)
+end
+
+local ELEM_GROUP  = "lbphacker"
+local ELEM_NAME   = "soapworm"
+local ELEM_MNAME  = "SPWR"
+local ELEM_DESC   = [["Soapworm". Creates a continuous line of SOAP.]]
+local ELEM_MCOLOR = 0xF5F5DC
+
+if tools then
+	tpt.SPWR.tool = tools.allocate(ELEM_GROUP, ELEM_NAME)
+	tools.property(tpt.SPWR.tool, "Name", ELEM_MNAME)
+	tools.property(tpt.SPWR.tool, "Description", ELEM_DESC)
+	tools.property(tpt.SPWR.tool, "Color", ELEM_MCOLOR)
+	tools.property(tpt.SPWR.tool, "Perform", function(i, x, y, strength, shift, ctrl, alt, bx, by)
+		local i = sim.partCreate(-2, x, y, elem.DEFAULT_PT_SOAP)
+		if i ~= -1 then
+			configure(i)
+		end
+	end)
+else
+	tpt.SPWR.elem = elem.allocate(ELEM_GROUP, ELEM_NAME)
+	elem.element(tpt.SPWR.elem, elem.element(elem.DEFAULT_PT_SOAP))
+	elem.property(tpt.SPWR.elem, "Name", ELEM_MNAME)
+	elem.property(tpt.SPWR.elem, "Description", ELEM_DESC)
+	elem.property(tpt.SPWR.elem, "Color", ELEM_MCOLOR)
+	elem.property(tpt.SPWR.elem, "Graphics", configure)
+end
