@@ -47,7 +47,7 @@ if tools then
 	tools.property(tpt.NOIS.tool_noise, "Name", ELEM_MNAME)
 	tools.property(tpt.NOIS.tool_noise, "Description", ELEM_DESC)
 	tools.property(tpt.NOIS.tool_noise, "Color", ELEM_MCOLOR)
-	tools.property(tpt.NOIS.tool_noise, "Perform", function(i, x, y, shift, ctrl, alt, strength, bx, by)
+	tools.property(tpt.NOIS.tool_noise, "Perform", function(i, x, y, strength, shift, ctrl, alt, bx, by)
 		if i then
 			add_noise_on(i)
 		end

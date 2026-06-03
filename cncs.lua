@@ -133,19 +133,14 @@ end
 
 tpt.CNCS = tpt.CNCS or {}
 pcall(elem.free, tpt.CNCS.elem)
+if tools then
+	pcall(tools.free, tpt.CNCS.tool)
+end
 pcall(event.unregister, event.tick, tpt.CNCS.overlay)
-
-tpt.CNCS.elem = elem.allocate("lbphacker", "conicsection")
-elem.element(tpt.CNCS.elem, elem.element(elem.DEFAULT_PT_DMND))
-elem.property(tpt.CNCS.elem, "Name", "CNCS")
-elem.property(tpt.CNCS.elem, "MenuSection", elem.SC_TOOL)
-elem.property(tpt.CNCS.elem, "Description", "Conic section generator. Place five of them using the smallest brush to get a conic section made from DMND.")
-elem.property(tpt.CNCS.elem, "Color", 0x882647)
+pcall(event.unregister, event.tick, tpt.CNCS.tool_overlay)
 
 local x, y = {}, {}
-elem.property(tpt.CNCS.elem, "Graphics", function(i)
-	sim.partChangeType(i, elem.DEFAULT_PT_DMND)
-	x[#x + 1], y[#x + 1] = sim.partPosition(i)
+local function trigger()
 	if #x == 4 then
 		event.register(event.tick, tpt.CNCS.overlay)
 	elseif #x == 5 then
@@ -157,7 +152,43 @@ elem.property(tpt.CNCS.elem, "Graphics", function(i)
 		end
 		x, y = {}, {}
 	end
-end)
+end
+
+local ELEM_GROUP  = "lbphacker"
+local ELEM_NAME   = "conicsection"
+local ELEM_MNAME  = "CNCS"
+local ELEM_DESC   = "Conic section generator. Place five of them using the smallest brush to get a conic section made from DMND."
+local ELEM_MCOLOR = 0x882647
+if tools then
+	tpt.CNCS.tool = tools.allocate(ELEM_GROUP, ELEM_NAME)
+	tools.property(tpt.CNCS.tool, "Name", ELEM_MNAME)
+	tools.property(tpt.CNCS.tool, "Description", ELEM_DESC)
+	tools.property(tpt.CNCS.tool, "Color", ELEM_MCOLOR)
+	tools.property(tpt.CNCS.tool, "Click", function(brush, px, py, strength, shift, ctrl, alt)
+		x[#x + 1], y[#x + 1] = px, py
+		trigger()
+	end)
+
+	function tpt.CNCS.tool_overlay()
+		for i = 1, #x do
+			gfx.drawLine(x[i] + 3, y[i] - 3, x[i] - 3, y[i] + 3)
+			gfx.drawLine(x[i] - 3, y[i] - 3, x[i] + 3, y[i] + 3)
+		end
+	end
+	event.register(event.tick, tpt.CNCS.tool_overlay)
+else
+	tpt.CNCS.elem = elem.allocate(ELEM_GROUP, ELEM_NAME)
+	elem.element(tpt.CNCS.elem, elem.element(elem.DEFAULT_PT_DMND))
+	elem.property(tpt.CNCS.elem, "Name", ELEM_MNAME)
+	elem.property(tpt.CNCS.elem, "MenuSection", elem.SC_TOOL)
+	elem.property(tpt.CNCS.elem, "Description", ELEM_DESC)
+	elem.property(tpt.CNCS.elem, "Color", ELEM_MCOLOR)
+	elem.property(tpt.CNCS.elem, "Graphics", function(i)
+		sim.partChangeType(i, elem.DEFAULT_PT_DMND)
+		x[#x + 1], y[#x + 1] = sim.partPosition(i)
+		trigger()
+	end)
+end
 
 function tpt.CNCS.overlay()
 	x[5], y[5] = sim.adjustCoords(tpt.mousex, tpt.mousey)
